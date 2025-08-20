@@ -4,15 +4,16 @@ import NoiseCapture from './features/NoiseCapture.jsx';
 import { addNoiseSample, subscribeToSamples } from './features/HeatmapData.ts';
 import { generateMockSamples, nudgeSamples } from './mock/data.ts';
 
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
 function scaleDbToIntensity(db) {
-  // Emphasize >70 dB and give a clear floor for <50 dB
-  const minDb = 50;
-  const maxDb = 90;
-  if (db <= minDb) return 0.12;
+  // Stronger mapping so reds appear more readily
+  const minDb = 45;
+  const maxDb = 72;
+  if (db <= minDb) return 0.35;
   if (db >= maxDb) return 1.0;
   const t = (db - minDb) / (maxDb - minDb);
-  // non-linear easing to boost contrast for higher dB
-  return 0.12 + Math.pow(t, 1.5) * 0.88;
+  return clamp01(0.35 + Math.pow(t, 1.05) * 0.65);
 }
 
 function App() {
@@ -21,7 +22,6 @@ function App() {
   const mockRef = useRef({ enabled: false, timer: 0, data: [] });
 
   useEffect(() => {
-    // If Firestore env is missing, enable mock mode
     const missingEnv = [
       import.meta.env.VITE_FIREBASE_API_KEY,
       import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -31,13 +31,13 @@ function App() {
 
     if (missingEnv) {
       mockRef.current.enabled = true;
-      mockRef.current.data = generateMockSamples(350);
+      mockRef.current.data = generateMockSamples(1800);
       setSamples(mockRef.current.data);
 
       const tick = () => {
-        mockRef.current.data = nudgeSamples(mockRef.current.data, 0.15);
+        mockRef.current.data = nudgeSamples(mockRef.current.data, 0.22);
         setSamples(mockRef.current.data);
-        mockRef.current.timer = setTimeout(tick, 1200);
+        mockRef.current.timer = setTimeout(tick, 900);
       };
       tick();
 
