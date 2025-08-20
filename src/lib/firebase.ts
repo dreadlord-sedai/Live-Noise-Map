@@ -1,32 +1,28 @@
 import { initializeApp, type FirebaseOptions } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
+// TODO: Replace these placeholder values with your actual Firebase project settings
+const firebaseConfig: FirebaseOptions = {
+	apiKey: 'YOUR_API_KEY',
+	authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
+	projectId: 'YOUR_PROJECT_ID',
+	storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+	messagingSenderId: 'YOUR_SENDER_ID',
+	appId: 'YOUR_APP_ID',
+};
+
 let cachedDb: Firestore | null = null;
-
-function buildConfig(): FirebaseOptions | null {
-	const cfg = {
-		apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-		authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-		projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-		storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-		messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-		appId: import.meta.env.VITE_FIREBASE_APP_ID,
-	} as const;
-
-	const values = Object.values(cfg);
-	const hasMissing = values.some((v) => !v || typeof v !== 'string' || v.trim() === '');
-	if (hasMissing) return null;
-	return cfg as unknown as FirebaseOptions;
-}
 
 export function getDb(): Firestore | null {
 	if (cachedDb) return cachedDb;
-	const cfg = buildConfig();
-	if (!cfg) {
-		console.warn('Firebase env vars missing. Skipping Firestore init.');
-		return null;
-	}
-	const app = initializeApp(cfg);
+	const app = initializeApp(firebaseConfig);
 	cachedDb = getFirestore(app);
+	if (
+		firebaseConfig.apiKey?.startsWith('YOUR_') ||
+		!firebaseConfig.projectId ||
+		firebaseConfig.projectId === 'YOUR_PROJECT_ID'
+	) {
+		console.warn('Firebase config placeholders detected. Update hardcoded config in src/lib/firebase.ts');
+	}
 	return cachedDb;
 }
