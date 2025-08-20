@@ -5,6 +5,37 @@ export type MockSample = {
 	timestamp: string;
 };
 
+// Rough simplified polygon of Sri Lanka coastline (lat, lon)
+// Clockwise, closed (first point repeated at end)
+const SRILANKA_POLY: Array<[number, number]> = [
+	[9.85, 80.20],   // Point Pedro (N)
+	[9.20, 79.80],   // Mannar (NW)
+	[8.20, 79.70],   // Puttalam (W)
+	[7.20, 79.85],   // Negombo (W)
+	[6.60, 80.00],   // Kalutara (SW)
+	[6.05, 80.10],   // Galle (SW)
+	[5.92, 80.45],   // Dondra (S)
+	[5.95, 81.10],   // Hambantota (S)
+	[6.20, 81.85],   // Pottuvil (SE)
+	[7.20, 81.90],   // Batticaloa (E)
+	[8.20, 81.75],   // Trincomalee (NE)
+	[9.00, 81.40],   // NE
+	[9.60, 80.90],   // Jaffna area (N)
+	[9.85, 80.20],   // close
+];
+
+function pointInPolygon(lat: number, lon: number, poly: Array<[number, number]>): boolean {
+	let inside = false;
+	for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+		const xi = poly[i][0], yi = poly[i][1];
+		const xj = poly[j][0], yj = poly[j][1];
+		const intersect = ((yi > lon) !== (yj > lon)) &&
+			(lat < ((xj - xi) * (lon - yi)) / (yj - yi + 1e-12) + xi);
+		if (intersect) inside = !inside;
+	}
+	return inside;
+}
+
 const CLUSTERS = [
 	{ name: 'Colombo', lat: 6.9271, lon: 79.8612, base: 70, sigma: 0.06 },
 	{ name: 'Kandy', lat: 7.2906, lon: 80.6337, base: 62, sigma: 0.05 },
@@ -48,35 +79,33 @@ export function generateMockSamples(total: number = 1200): MockSample[] {
 	const nowIso = new Date().toISOString();
 	const samples: MockSample[] = [];
 
+	const tryPush = (lat: number, lon: number, dB: number) => {
+		if (lat < BOUNDS.minLat || lat > BOUNDS.maxLat || lon < BOUNDS.minLon || lon > BOUNDS.maxLon) return false;
+		if (!pointInPolygon(lat, lon, SRILANKA_POLY)) return false;
+		samples.push({ lat, lon, dB: Number(dB.toFixed(1)), timestamp: nowIso });
+		return true;
+	};
+
 	// 70% clustered urban-ish points
-	const clusteredCount = Math.floor(total * 0.7);
-	for (let i = 0; i < clusteredCount; i++) {
+	const clusteredTarget = Math.floor(total * 0.7);
+	while (samples.length < clusteredTarget) {
 		const c = CLUSTERS[Math.floor(Math.random() * CLUSTERS.length)];
 		const latOffset = randNorm() * c.sigma;
 		const lonOffset = randNorm() * c.sigma;
-		const dB = clamp(c.base + randNorm() * 10, 45, 92);
-		samples.push({
-			lat: c.lat + latOffset,
-			lon: c.lon + lonOffset,
-			dB: Number(dB.toFixed(1)),
-			timestamp: nowIso,
-		});
+		const dB = clamp(c.base + randNorm() * 10, 45, 95);
+		const lat = c.lat + latOffset;
+		const lon = c.lon + lonOffset;
+		if (!tryPush(lat, lon, dB)) continue;
 	}
 
-	// 30% low-intensity background field across the island
-	const backgroundCount = total - clusteredCount;
-	for (let i = 0; i < backgroundCount; i++) {
+	// 30% low-intensity background field across the island (but constrained to land)
+	while (samples.length < total) {
 		const lat = randomBetween(BOUNDS.minLat, BOUNDS.maxLat) + randNorm() * 0.01;
 		const lon = randomBetween(BOUNDS.minLon, BOUNDS.maxLon) + randNorm() * 0.01;
-		// base 46-55 with rare louder spikes
 		const spike = Math.random() < 0.06 ? randomBetween(8, 18) : 0;
 		const base = randomBetween(46, 55) + spike;
-		samples.push({
-			lat,
-			lon,
-			dB: Number(clamp(base, 44, 90).toFixed(1)),
-			timestamp: nowIso,
-		});
+		const dB = clamp(base, 44, 92);
+		if (!tryPush(lat, lon, dB)) continue;
 	}
 
 	return samples;
@@ -86,20 +115,15 @@ export function nudgeSamples(samples: MockSample[], changeRatio = 0.2): MockSamp
 	const t = Date.now() / 1000;
 	const nowIso = new Date().toISOString();
 	return samples.map((s) => {
-		// Derive a pseudo-seed from lat/lon for stable local pulsing
-		const seed = (s.lat * 7.1 + s.lon * 13.7);
+		const seed = s.lat * 7.1 + s.lon * 13.7;
 		const pulse = Math.sin(t * 1.1 + seed) * 3.5 + Math.sin(t * 0.37 + seed * 0.5) * 2.0;
 		const randomWalk = (Math.random() - 0.5) * 1.2;
 		let dB = s.dB + pulse * 0.25 + randomWalk;
-
-		// Occasional transient surge (e.g., traffic peak)
 		if (Math.random() < 0.015) dB += randomBetween(6, 12);
 
-		// Small spatial jitter
 		let lat = s.lat + (Math.random() - 0.5) * 0.004;
 		let lon = s.lon + (Math.random() - 0.5) * 0.004;
 
-		// Rarely relocate a point near a random cluster to mimic movement
 		if (Math.random() < changeRatio * 0.08) {
 			const c = CLUSTERS[Math.floor(Math.random() * CLUSTERS.length)];
 			lat = c.lat + randNorm() * c.sigma * 0.8;
@@ -107,10 +131,16 @@ export function nudgeSamples(samples: MockSample[], changeRatio = 0.2): MockSamp
 			dB = c.base + randNorm() * 8;
 		}
 
+		// Keep inside land polygon; if outside, revert to previous location
+		if (!pointInPolygon(lat, lon, SRILANKA_POLY)) {
+			lat = s.lat;
+			lon = s.lon;
+		}
+
 		return {
 			lat: clamp(lat, BOUNDS.minLat, BOUNDS.maxLat),
 			lon: clamp(lon, BOUNDS.minLon, BOUNDS.maxLon),
-			dB: Number(clamp(dB, 42, 95).toFixed(1)),
+			dB: Number(clamp(dB, 42, 98).toFixed(1)),
 			timestamp: nowIso,
 		};
 	});
