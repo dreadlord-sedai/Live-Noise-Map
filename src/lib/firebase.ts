@@ -3,12 +3,12 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 
 // TODO: Replace these placeholder values with your actual Firebase project settings
 const firebaseConfig: FirebaseOptions = {
-	apiKey: 'YOUR_API_KEY',
-	authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-	projectId: 'YOUR_PROJECT_ID',
-	storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-	messagingSenderId: 'YOUR_SENDER_ID',
-	appId: 'YOUR_APP_ID',
+	apiKey: 'AIzaSyCOCcQdAzkYxhfiEiQGCdoZA975PfsOu6A',
+	authDomain: 'live-noise-map.firebaseapp.com',
+	projectId: 'live-noise-map',
+	storageBucket: 'live-noise-map.firebasestorage.app',
+	messagingSenderId: '451956665233',
+	appId: '1:451956665233:web:3e638a0e860f8c84c34830',
 };
 
 let cachedDb: Firestore | null = null;
