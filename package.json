@@ -30,5 +30,17 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.12",
     "vite": "^7.1.2"
-  }
+  },
+  "description": "🔹 Finalized MVP Plan for Live Noise Map\r Realtime updating Heatmap of Noise in Sri Lanka visualized based on location.",
+  "main": "eslint.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dreadlord-sedai/Live-Noise-Map.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dreadlord-sedai/Live-Noise-Map/issues"
+  },
+  "homepage": "https://github.com/dreadlord-sedai/Live-Noise-Map#readme"
 }
