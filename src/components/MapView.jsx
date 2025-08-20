@@ -46,15 +46,16 @@ export default function MapView({ heatData }) {
         setTimeout(refreshSize, 100);
         setTimeout(refreshSize, 300);
         heatLayerRef.current = L.heatLayer([], {
-          radius: 25,
-          blur: 20,
+          radius: 32,
+          blur: 28,
           maxZoom: 17,
           gradient: {
-            0.0: '#00ff7f',
-            0.5: '#ffd700',
-            0.7: '#ff8c00',
-            0.85: '#ff4500',
-            1.0: '#ff0000',
+            0.0: '#00ff88',
+            0.35: '#aaff00',
+            0.55: '#ffd700',
+            0.75: '#ff8c00',
+            0.9: '#ff4500',
+            1.0: '#b30000',
           },
         }).addTo(map);
       });

@@ -1,18 +1,49 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView from './components/MapView.jsx';
 import NoiseCapture from './features/NoiseCapture.jsx';
 import { addNoiseSample, subscribeToSamples } from './features/HeatmapData.ts';
+import { generateMockSamples, nudgeSamples } from './mock/data.ts';
 
 function scaleDbToIntensity(db) {
-  const clamped = Math.max(0, Math.min(100, db));
-  return clamped / 100;
+  // Emphasize >70 dB and give a clear floor for <50 dB
+  const minDb = 50;
+  const maxDb = 90;
+  if (db <= minDb) return 0.12;
+  if (db >= maxDb) return 1.0;
+  const t = (db - minDb) / (maxDb - minDb);
+  // non-linear easing to boost contrast for higher dB
+  return 0.12 + Math.pow(t, 1.5) * 0.88;
 }
 
 function App() {
   const [samples, setSamples] = useState([]);
   const [range, setRange] = useState('all');
+  const mockRef = useRef({ enabled: false, timer: 0, data: [] });
 
   useEffect(() => {
+    // If Firestore env is missing, enable mock mode
+    const missingEnv = [
+      import.meta.env.VITE_FIREBASE_API_KEY,
+      import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      import.meta.env.VITE_FIREBASE_APP_ID,
+    ].some((v) => !v || String(v).trim() === '');
+
+    if (missingEnv) {
+      mockRef.current.enabled = true;
+      mockRef.current.data = generateMockSamples(350);
+      setSamples(mockRef.current.data);
+
+      const tick = () => {
+        mockRef.current.data = nudgeSamples(mockRef.current.data, 0.15);
+        setSamples(mockRef.current.data);
+        mockRef.current.timer = setTimeout(tick, 1200);
+      };
+      tick();
+
+      return () => clearTimeout(mockRef.current.timer);
+    }
+
     const unsub = subscribeToSamples(setSamples, range);
     return () => unsub();
   }, [range]);
