@@ -1,5 +1,5 @@
 import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getDb } from '../lib/firebase';
 
 export type NoiseSample = {
   lat: number;
@@ -9,6 +9,11 @@ export type NoiseSample = {
 };
 
 export async function addNoiseSample(sample: NoiseSample) {
+  const db = getDb();
+  if (!db) {
+    console.warn('Firestore not configured; sample not saved.', sample);
+    return;
+  }
   await addDoc(collection(db, 'noise_samples'), {
     ...sample,
     timestamp: Timestamp.fromDate(new Date(sample.timestamp)),
@@ -16,6 +21,11 @@ export async function addNoiseSample(sample: NoiseSample) {
 }
 
 export function subscribeToSamples(onData: (samples: NoiseSample[]) => void) {
+  const db = getDb();
+  if (!db) {
+    onData([]);
+    return () => {};
+  }
   const q = query(collection(db, 'noise_samples'), orderBy('timestamp', 'desc'));
   return onSnapshot(q, (snap) => {
     const data: NoiseSample[] = snap.docs.map((d) => {

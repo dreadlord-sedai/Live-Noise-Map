@@ -25,8 +25,15 @@ export default function MapView({ heatData }) {
 
     heatLayerRef.current = L.heatLayer([], {
       radius: 25,
-      blur: 15,
+      blur: 20,
       maxZoom: 17,
+      gradient: {
+        0.0: '#00ff7f', // green
+        0.5: '#ffd700', // yellow
+        0.7: '#ff8c00', // orange
+        0.85: '#ff4500', // orange-red
+        1.0: '#ff0000', // red
+      },
     }).addTo(map);
 
     return () => {

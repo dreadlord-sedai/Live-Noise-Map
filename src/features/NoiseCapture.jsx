@@ -6,6 +6,7 @@ export default function NoiseCapture({ onSample }) {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const rafRef = useRef(0);
+  const lastGeoTsRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -42,7 +43,9 @@ export default function NoiseCapture({ onSample }) {
         const rms = Math.sqrt(sum / dataArray.length);
         const db = 20 * Math.log10(rms || 1e-8) + 100; // rough scale
 
-        if (navigator.geolocation) {
+        const now = performance.now();
+        if (navigator.geolocation && now - lastGeoTsRef.current > 5000) {
+          lastGeoTsRef.current = now;
           navigator.geolocation.getCurrentPosition((pos) => {
             const sample = {
               lat: pos.coords.latitude,
