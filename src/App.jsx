@@ -1,35 +1,46 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useMemo, useState } from 'react';
+import './App.css';
+import MapView from './components/MapView.jsx';
+import NoiseCapture from './features/NoiseCapture.jsx';
+import { addNoiseSample, subscribeToSamples } from './features/HeatmapData.ts';
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+function scaleDbToIntensity(db) {
+  // Clamp 0..100 and scale 0..1
+  const clamped = Math.max(0, Math.min(100, db));
+  return clamped / 100;
 }
 
-export default App
+function App() {
+  const [samples, setSamples] = useState([]);
+
+  useEffect(() => {
+    const unsub = subscribeToSamples(setSamples);
+    return () => unsub();
+  }, []);
+
+  const heatData = useMemo(() => {
+    return samples.map((s) => ({
+      lat: s.lat,
+      lon: s.lon,
+      intensity: scaleDbToIntensity(s.dB),
+    }));
+  }, [samples]);
+
+  return (
+    <div className="w-screen h-screen flex flex-col">
+      <header className="p-3 border-b bg-white/80 backdrop-blur z-10">
+        <h1 className="text-xl font-semibold">Live Noise Map</h1>
+      </header>
+      <main className="flex-1 grid grid-rows-[1fr_auto]">
+        <div className="relative">
+          <MapView heatData={heatData} />
+        </div>
+        <div className="p-3 bg-white border-t">
+          <NoiseCapture onSample={addNoiseSample} />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
