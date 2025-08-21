@@ -1,142 +1,165 @@
-🔹 Finalized MVP Plan for Live Noise Map
-Realtime updating Heatmap of Noise in Sri Lanka visualized based on location.
+# Live Noise Map
 
-1. Frontend (UI + Map)
-Framework → React
+Real-time, interactive heatmap of environmental noise across Sri Lanka. Data can come from browsers (Web Audio + Geolocation), IoT pods (ESP32 + mic), Firebase Firestore, or Firebase Realtime Database. The app renders an animated heatmap using Leaflet and `leaflet.heat`.
 
+## Table of Contents
+- Overview
+- Key Features
+- Architecture
+- Data Model
+- Getting Started
+- Development
+- Modes (Auto / Live / Mock / RTDB)
+- Firebase Setup (Firestore + RTDB)
+- Security Notes
+- Performance Notes
+- Accessibility
+- Roadmap and Backlog
 
-Styling → Tailwind CSS (fast, responsive, modern look)
+## Overview
+Live Noise Map visualizes noise intensity in real time. Each reading contains latitude, longitude, approximate dB level, and timestamp. The app supports:
+- Browser capture (microphone + location)
+- Firebase Firestore realtime sync
+- Firebase Realtime Database (RTDB) sync
+- Rich mock data for demos (constrained to Sri Lanka land polygon)
 
+## Key Features
+- Leaflet + leaflet.heat heatmap with green → yellow → red gradient
+- Realtime updates from Firestore or RTDB
+- Web capture: approximate dB via Web Audio API + Geolocation API
+- Mode toggle: Auto / Live (Firestore) / Mock / RTDB
+- Time filters: All / 24h / 7d (for Firestore)
+- Tailwind CSS UI (dev uses CDN assist; production uses PostCSS build)
 
-Map & Heatmap →
+## Architecture
+- Frontend: React + Vite + Tailwind + Leaflet
+- Data sync: Firebase (Firestore and/or Realtime Database)
+- Heatmap: leaflet.heat layer fed with `[lat, lon, intensity]`
+- Mock generator: clustered, background field, pulses, surges; constrained to Sri Lanka polygon
 
+Directory highlights:
+- `src/components/MapView.jsx` – Leaflet map + heat layer lifecycle
+- `src/features/NoiseCapture.jsx` – Web Audio + Geolocation capture (Start/Stop)
+- `src/features/HeatmapData.ts` – Firestore/RTDB add/subscribe utilities
+- `src/mock/data.ts` – Robust mock data generator
+- `src/lib/firebase.ts` – Firebase init (Firestore + RTDB) using hardcoded config
 
-Leaflet.js (open-source mapping library)
-
-
-OpenStreetMap tiles (free, no account needed)
-
-
-leaflet.heat plugin → heatmap visualization of noise intensity
-
-
-
-2. Noise + Location Capture
-Web Audio API → capture microphone input, approximate dB levels
-
-
-Geolocation API → get user’s coordinates at time of measurement
-
-
-Data Format →
-
+## Data Model
+Normalized sample (shared across sources):
+```json
  {
   "lat": 6.9271,
   "lon": 79.8612,
   "dB": 72.4,
   "timestamp": "2025-08-20T11:30:00Z"
 }
+```
 
-
-
-3. Backend / Database
-Firebase Firestore
-
-
-Simple schema, easy integration with React
-
-
-Realtime sync → heatmap updates live when new data is added
-
-
-👉 Schema in Firestore
-/noise_samples
+Firestore (collection `noise_samples`):
+```json
   {
     "lat": 6.9271,
     "lon": 79.8612,
     "dB": 72.4,
-    "timestamp": "2025-08-20T11:30:00Z"
+  "timestamp": <Firestore Timestamp>
+}
+```
+
+Realtime Database (path `noiseReports`) expected schema:
+```json
+{
+  "noiseReports": {
+    "<reportId>": {
+      "latitude": 6.9271,
+      "longitude": 79.8612,
+      "dbValue": 72.4,
+      "timestamp": 1692521400000
+    }
   }
+}
+```
 
+## Getting Started
+Prerequisites:
+- Node 18+
+- npm 9+
 
-4. Data Visualization (Leaflet Heatmap Layer)
-Fetch data from Firestore → convert to [[lat, lon, intensity], ...]
+Install and run dev server:
+```
+npm install
+npm run dev
+```
+Production build and preview:
+```
+npm run build
+npm run preview
+```
 
+## Development
+- Main entry: `src/main.jsx`
+- Tailwind directives in `src/index.css`
+- Leaflet CSS imported in `src/main.jsx`
+- Vite config: `vite.config.js`
 
-Intensity scaled from dB (e.g., intensity = dB / 100)
+## Modes (Auto / Live / Mock / RTDB)
+Use the toggle in the header:
+- Auto: If Firestore initializes, uses Firestore; otherwise falls back to Mock
+- Live: Force Firestore subscription to `noise_samples`
+- Mock: Animated mock dataset (no writes)
+- RTDB: Subscribe to `noiseReports` in Realtime Database
 
+When switching modes or time range, the app clears existing samples immediately to avoid mixing sources.
 
-Use leaflet.heat plugin:
+## Firebase Setup (Firestore + RTDB)
+The project uses hardcoded Firebase config in `src/lib/firebase.ts`. Replace placeholders with your real project values (already populated if you edited them).
 
- L.heatLayer(data, {
-  radius: 25,
-  blur: 15,
-  maxZoom: 17
-}).addTo(map);
+Enable services:
+- Firestore Database
+- Realtime Database
 
+Testing rules (relax for local demo only – do not use in production):
 
-Color Gradient (customizable):
+Firestore rules (demo):
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /noise_samples/{doc} {
+      allow read, write: if true;
+    }
+  }
+}
+```
 
+RTDB rules (demo):
+```json
+{
+  "rules": {
+    "noiseReports": {
+      ".read": true,
+      ".write": true,
+      "$reportId": {
+        ".validate": "newData.hasChildren(['latitude', 'longitude', 'dbValue', 'timestamp']) && newData.child('latitude').isNumber() && newData.child('longitude').isNumber() && newData.child('dbValue').isNumber() && newData.child('timestamp').isNumber()"
+      }
+    }
+  }
+}
+```
 
-Green = Quiet (<50 dB)
+## Security Notes
+- Do not ship open rules to production; lock down read/write access
+- Consider authenticated writes for browsers; IoT devices should use a secure ingestion endpoint or custom token
+- Avoid exposing private keys or secrets (Firebase web config is public but rules must protect data)
 
+## Performance Notes
+- Heat layer parameters tuned for contrast; adjust `radius`, `blur`, `minOpacity`, and gradient in `MapView.jsx`
+- Intensity mapping boosts reds for >~70 dB; tune in `App.jsx` if needed
+- Mock dataset uses ~1,800 points; reduce for low-end devices
 
-Yellow = Moderate (50–70 dB)
+## Accessibility
+- High-contrast colors for gradient
+- Keyboard-focusable controls for mode/time range
+- Consider adding ARIA labels and descriptions for non-visual users
 
-
-Red = Loud (>70 dB)
-
-
-
-5. Extra Features (if time)
-Time filters → last 24h / last week (Firestore query by timestamp)
-
-
-Popups/Tooltips → on map click, show exact dB + timestamp
-
-
-Charts (optional) → Noise trends with Chart.js
-
-
-
-🔹 Tech Stack Summary
-Frontend
-React
-
-
-Tailwind CSS
-
-
-Leaflet.js + OSM + leaflet.heat
-
-
-Noise & Location
-Web Audio API (dB capture)
-
-
-Geolocation API
-
-
-Backend
-Firebase Firestore
-
-
-Visualization
-Leaflet Heatmap Layer (leaflet.heat)
-
-
-Optional: Chart.js for noise trends
-
-
-# React + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Roadmap and Backlog
+See `ROADMAP.md` for phased plan and `BACKLOG.md` for actionable next steps.
