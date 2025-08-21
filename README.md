@@ -16,6 +16,9 @@ Real-time, interactive heatmap of environmental noise across Sri Lanka. Data can
 - Accessibility
 - Roadmap and Backlog
 
+## Contribution
+As of now the contribution on this project depends on 4 core members, however we do plan to use open-source this project for further development, this project is the result of a hackathon.
+
 ## Overview
 Live Noise Map visualizes noise intensity in real time. Each reading contains latitude, longitude, approximate dB level, and timestamp. The app supports:
 - Browser capture (microphone + location)
