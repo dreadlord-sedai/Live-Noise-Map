@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
-import { Audio } from 'expo-av';
+import { Audio } from 'expo-audio';
 import { api } from '../services/api';
 
 function formatDb(db) {
