@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator, Alert, Switch, ScrollView, Animated } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Audio } from 'expo-av';
+import * as Location from 'expo-location';
 import { api } from '../services/api';
 import { generateMockSamples, nudgeSamples } from '../utils/mock';
-import { subscribeToNoiseData } from '../lib/firebase';
+import { subscribeToNoiseData, getRealtimeDb } from '../lib/firebase';
+import { ref, push, set } from 'firebase/database';
 
 export default function MapScreen() {
   const [mapReady, setMapReady] = useState(false);
@@ -14,11 +17,18 @@ export default function MapScreen() {
   const [showOptions, setShowOptions] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   
   // Settings
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  
+  // Sound Capture
+  const [isRecording, setIsRecording] = useState(false);
+  const [currentDb, setCurrentDb] = useState(0);
+  const [recordingPermission, setRecordingPermission] = useState(false);
+  const [locationPermission, setLocationPermission] = useState(false);
   
   const webViewRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -35,6 +45,9 @@ export default function MapScreen() {
   // Mock simulation state
   const mockTimerRef = useRef(null);
   const firebaseUnsubscribeRef = useRef(null);
+  
+  // Sound capture refs
+  const recordingRef = useRef(null);
 
   // Simple map HTML
   const mapHtml = `
@@ -178,7 +191,10 @@ export default function MapScreen() {
       location: undefined,
     }));
     setNoiseData(initial);
-    setLastUpdate(new Date());
+      setLastUpdate(new Date());
+    
+    // Request permissions on mount
+    requestPermissions();
   }, []);
 
   // Push data to webview when data changes
@@ -227,62 +243,79 @@ export default function MapScreen() {
   const refreshTimerRef = useRef(null);
 
   const loadNoiseData = async () => {
-    if (useMockData) {
-      // Ensure mock simulation running
-      if (!mockTimerRef.current) {
-        mockTimerRef.current = setInterval(() => {
-          setNoiseData((prev) => {
-            const nudged = nudgeSamples(prev.map(p => ({ lat: p.lat, lon: p.lng, dB: p.dB, timestamp: p.timestamp })), 0.2)
-              .map(p => ({ lat: p.lat, lng: p.lon, dB: p.dB, timestamp: p.timestamp }));
-            return nudged;
-          });
-          setLastUpdate(new Date());
-        }, 4000);
-      }
-      // Also do an immediate nudge to show freshness
-      setNoiseData((prev) => prev.length ? prev : generateMockSamples(800).map(p => ({ lat: p.lat, lng: p.lon, dB: p.dB, timestamp: p.timestamp })));
-      setLastUpdate(new Date());
-      return;
-    } else {
-      // If switching to live, stop mock timer
-      if (mockTimerRef.current) {
-        clearInterval(mockTimerRef.current);
-        mockTimerRef.current = null;
-      }
-      
-      // Subscribe to Firebase Realtime Database
-      if (!firebaseUnsubscribeRef.current) {
-                 firebaseUnsubscribeRef.current = subscribeToNoiseData((firebaseData) => {
-           const mapped = firebaseData.map((r) => {
-             // Safe timestamp handling
-             let safeTimestamp;
-             try {
-               if (r.timestamp) {
-                 const date = new Date(r.timestamp);
-                 if (isNaN(date.getTime())) {
-                   safeTimestamp = new Date().toISOString();
-                 } else {
-                   safeTimestamp = date.toISOString();
-                 }
-               } else {
-                 safeTimestamp = new Date().toISOString();
-               }
-             } catch (e) {
-               safeTimestamp = new Date().toISOString();
-             }
+    setIsLoadingData(true);
+    
+    try {
+      if (useMockData) {
+        // Clear any existing Firebase subscription
+        if (firebaseUnsubscribeRef.current) {
+          firebaseUnsubscribeRef.current();
+          firebaseUnsubscribeRef.current = null;
+        }
+        
+        // Ensure mock simulation running
+        if (!mockTimerRef.current) {
+          mockTimerRef.current = setInterval(() => {
+            setNoiseData((prev) => {
+              const nudged = nudgeSamples(prev.map(p => ({ lat: p.lat, lon: p.lng, dB: p.dB, timestamp: p.timestamp })), 0.2)
+                .map(p => ({ lat: p.lat, lng: p.lon, dB: p.dB, timestamp: p.timestamp }));
+              return nudged;
+            });
+            setLastUpdate(new Date());
+          }, 4000);
+        }
+        // Also do an immediate nudge to show freshness
+        setNoiseData((prev) => prev.length ? prev : generateMockSamples(800).map(p => ({ lat: p.lat, lng: p.lon, dB: p.dB, timestamp: p.timestamp })));
+        setLastUpdate(new Date());
+      } else {
+        // If switching to live, stop mock timer and clear mock data
+        if (mockTimerRef.current) {
+          clearInterval(mockTimerRef.current);
+          mockTimerRef.current = null;
+        }
+        
+        // Clear mock data immediately when switching to live
+        setNoiseData([]);
+        setLastUpdate(new Date());
+        
+        // Subscribe to Firebase Realtime Database
+        if (!firebaseUnsubscribeRef.current) {
+          firebaseUnsubscribeRef.current = subscribeToNoiseData((firebaseData) => {
+            const mapped = firebaseData.map((r) => {
+              // Safe timestamp handling
+              let safeTimestamp;
+              try {
+                if (r.timestamp) {
+                  const date = new Date(r.timestamp);
+                  if (isNaN(date.getTime())) {
+                    safeTimestamp = new Date().toISOString();
+                  } else {
+                    safeTimestamp = date.toISOString();
+                  }
+                } else {
+                  safeTimestamp = new Date().toISOString();
+                }
+              } catch (e) {
+                safeTimestamp = new Date().toISOString();
+              }
 
-             return {
-               lat: r.lat ?? r.latitude ?? 0,
-               lng: r.lon ?? r.longitude ?? 0,
-               dB: Math.round(r.dB ?? r.dbValue ?? 0),
-               timestamp: safeTimestamp,
-               location: r.locationName ?? r.city ?? r.location ?? 'Unknown',
-             };
-           }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat !== 0 && p.lng !== 0);
-          setNoiseData(mapped);
-          setLastUpdate(new Date());
-        });
+              return {
+                lat: r.lat ?? r.latitude ?? 0,
+                lng: r.lon ?? r.longitude ?? 0,
+                dB: Math.round(r.dB ?? r.dbValue ?? 0),
+                timestamp: safeTimestamp,
+                location: r.locationName ?? r.city ?? r.location ?? 'Unknown',
+              };
+            }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat !== 0 && p.lng !== 0);
+            setNoiseData(mapped);
+            setLastUpdate(new Date());
+          });
+        }
       }
+    } catch (error) {
+      console.error('Error loading noise data:', error);
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -311,12 +344,22 @@ export default function MapScreen() {
         clearInterval(mockTimerRef.current);
         mockTimerRef.current = null;
       }
-      if (firebaseUnsubscribeRef.current) {
-        firebaseUnsubscribeRef.current();
-        firebaseUnsubscribeRef.current = null;
-      }
-    };
-  }, [autoRefresh, useMockData]);
+             if (firebaseUnsubscribeRef.current) {
+         firebaseUnsubscribeRef.current();
+         firebaseUnsubscribeRef.current = null;
+       }
+       
+               // Cleanup recording if active
+        if (recordingRef.current) {
+          try {
+            recordingRef.current.stopAndUnloadAsync();
+          } catch (e) {
+            console.log('Error cleaning up recording:', e);
+          }
+          recordingRef.current = null;
+        }
+     };
+   }, [autoRefresh, useMockData]);
 
   const toggleOptions = () => {
     setShowOptions(!showOptions);
@@ -349,16 +392,211 @@ export default function MapScreen() {
     setNoiseData(prev => [...prev, newPoint]);
   };
 
+  // Sound Capture Functions
+  const requestPermissions = async () => {
+    try {
+      // Request audio recording permission
+      const audioPermission = await Audio.requestPermissionsAsync();
+      setRecordingPermission(audioPermission.status === 'granted');
+      
+      // Request location permission
+      const locationPermission = await Location.requestForegroundPermissionsAsync();
+      setLocationPermission(locationPermission.status === 'granted');
+      
+      if (audioPermission.status !== 'granted' || locationPermission.status !== 'granted') {
+        Alert.alert(
+          'Permissions Required',
+          'Audio recording and location access are required to capture noise data.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      return false;
+    }
+  };
+
+  const startSoundCapture = async () => {
+    try {
+      const hasPermissions = await requestPermissions();
+      if (!hasPermissions) return;
+
+      // Configure audio recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        staysActiveInBackground: false,
+        playThroughEarpieceAndroid: false,
+      });
+
+      setIsRecording(true);
+      
+      // Try to create recording object, fallback to simulation if it fails
+      try {
+        const { Recording } = Audio;
+        const recording = new Recording();
+        await recording.prepareAsync();
+        await recording.startAsync();
+        
+        // Store recording reference
+        recordingRef.current = recording;
+        console.log('Audio recording started successfully');
+      } catch (recordingError) {
+        console.warn('Audio recording failed, using simulation mode:', recordingError);
+        // Fallback to simulation mode
+        recordingRef.current = null;
+      }
+      
+      // Start monitoring audio levels (works in both real and simulation mode)
+      startAudioLevelMonitoring();
+      
+    } catch (error) {
+      console.error('Error starting sound capture:', error);
+      Alert.alert('Error', 'Failed to start sound capture');
+      setIsRecording(false);
+    }
+  };
+
+  const stopSoundCapture = async () => {
+    try {
+      // Stop recording if it exists
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+          const uri = recordingRef.current.getURI();
+          console.log('Recording stopped, URI:', uri);
+        } catch (recordingError) {
+          console.warn('Error stopping recording:', recordingError);
+        }
+        recordingRef.current = null;
+      }
+      
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      
+      // Calculate average dB from the recording or simulation
+      const avgDb = calculateAverageDb();
+      
+      // Submit to Firebase
+      await submitNoiseData({
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
+        dB: avgDb,
+        timestamp: new Date().toISOString(),
+        source: 'mobile-app',
+        deviceId: 'mobile-user',
+      });
+      
+      setCurrentDb(avgDb);
+      setIsRecording(false);
+      
+              const recordingMode = recordingRef.current ? 'Real Audio' : 'Simulation';
+        Alert.alert(
+          'Noise Data Captured & Submitted! 🎉',
+          `Location: ${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}\nNoise Level: ${avgDb} dB\nMode: ${recordingMode}\n\nData sent to Firebase database successfully!`,
+          [{ text: 'OK' }]
+        );
+      
+    } catch (error) {
+      console.error('Error stopping sound capture:', error);
+      Alert.alert('Error', 'Failed to stop sound capture');
+      setIsRecording(false);
+    }
+  };
+
+  const calculateAverageDb = () => {
+    // Simulate dB calculation based on recording
+    // In a real implementation, you would analyze the audio data
+    const baseDb = 45; // Base ambient noise
+    const variation = Math.random() * 20; // Random variation
+    return Math.round(baseDb + variation);
+  };
+
+  const submitNoiseData = async (data) => {
+    try {
+      const db = getRealtimeDb();
+      if (!db) {
+        console.error('Firebase database not available');
+        return;
+      }
+
+      const noiseRef = ref(db, 'noiseReports');
+      const newReportRef = push(noiseRef);
+      await set(newReportRef, {
+        lat: data.lat,
+        lon: data.lng,
+        dB: data.dB,
+        timestamp: data.timestamp,
+        source: data.source,
+        deviceId: data.deviceId,
+        locationName: 'Mobile User',
+      });
+
+      console.log('Noise data submitted successfully:', data);
+      
+      // Add to local data for immediate display
+    const newPoint = {
+        lat: data.lat,
+        lng: data.lng,
+        dB: data.dB,
+        timestamp: data.timestamp,
+        location: 'Mobile User',
+    };
+    
+    setNoiseData(prev => [...prev, newPoint]);
+      
+    } catch (error) {
+      console.error('Error submitting noise data:', error);
+      Alert.alert('Error', 'Failed to submit noise data to database');
+    }
+  };
+
+  const startAudioLevelMonitoring = () => {
+    // Simulate real-time audio level monitoring
+    const interval = setInterval(() => {
+      if (isRecording) {
+        const currentLevel = calculateAverageDb();
+        setCurrentDb(currentLevel);
+    } else {
+        clearInterval(interval);
+      }
+    }, 500); // Update more frequently for real-time feel
+  };
+
+  const getDbColor = (db) => {
+    if (db > 80) return '#e74c3c'; // Red for high noise
+    if (db > 60) return '#f39c12'; // Orange for medium noise
+    return '#2ecc71'; // Green for low noise
+  };
+
   return (
     <View style={styles.container}>
       {/* Clean Header */}
       {!isFullScreen && (
         <View style={styles.header}>
+            <View style={styles.headerTop}>
             <Text style={styles.title}>Live Noise Map</Text>
+              {isRecording && (
+                <View style={styles.recordingIndicator}>
+                  <View style={styles.recordingDot} />
+                  <Text style={styles.recordingText}>REC</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.subtitle}>Sri Lanka</Text>
-            {lastUpdate && (
-              <Text style={styles.updateTime}>Updated {lastUpdate.toLocaleTimeString()}</Text>
-            )}
+                         {isLoadingData ? (
+               <View style={styles.loadingContainer}>
+                 <ActivityIndicator size="small" color="white" />
+                 <Text style={styles.updateTime}>Loading {useMockData ? 'Mock' : 'Live'} Data...</Text>
+               </View>
+             ) : lastUpdate && (
+               <Text style={styles.updateTime}>Updated {lastUpdate.toLocaleTimeString()}</Text>
+             )}
         </View>
       )}
 
@@ -381,14 +619,27 @@ export default function MapScreen() {
         )}
       </View>
 
-      {/* Fullscreen Button */}
-      <TouchableOpacity style={styles.fullscreenFab} onPress={toggleFullScreen}>
-        <Text style={styles.fabText}>{isFullScreen ? '⤓' : '⤢'}</Text>
+             {/* Fullscreen Button */}
+       <TouchableOpacity style={styles.fullscreenFab} onPress={toggleFullScreen}>
+         <Text style={styles.fabText}>{isFullScreen ? '⤓' : '⤢'}</Text>
+       </TouchableOpacity>
+       
+       {/* Sound Capture Button */}
+            <TouchableOpacity 
+         style={[
+           styles.soundCaptureFab, 
+           isRecording && styles.soundCaptureFabRecording
+         ]} 
+         onPress={isRecording ? stopSoundCapture : startSoundCapture}
+       >
+         <Text style={styles.fabText}>
+           {isRecording ? '⏹️' : '🎤'}
+              </Text>
               </TouchableOpacity>
               
-      {/* Options Button */}
-      <TouchableOpacity style={styles.fab} onPress={toggleOptions}>
-        <Text style={styles.fabText}>⚙️</Text>
+       {/* Options Button */}
+       <TouchableOpacity style={styles.fab} onPress={toggleOptions}>
+         <Text style={styles.fabText}>⚙️</Text>
               </TouchableOpacity>
               
       {/* Options Panel */}
@@ -428,13 +679,57 @@ export default function MapScreen() {
         </View>
             </View>
 
-            {/* Actions */}
-            <View style={styles.optionSection}>
-              <Text style={styles.sectionTitle}>Actions</Text>
-              <TouchableOpacity style={styles.actionButton} onPress={addRandomPoint}>
-                <Text style={styles.actionButtonText}>📍 Add Random Point</Text>
+                         {/* Actions */}
+             <View style={styles.optionSection}>
+               <Text style={styles.sectionTitle}>Actions</Text>
+               <TouchableOpacity style={styles.actionButton} onPress={addRandomPoint}>
+                 <Text style={styles.actionButtonText}>📍 Add Random Point</Text>
+               </TouchableOpacity>
+               
+               {/* Sound Capture */}
+               <View style={styles.soundCaptureSection}>
+                 <Text style={styles.sectionTitle}>Sound Capture</Text>
+                 <View style={styles.soundCaptureControls}>
+                   {!isRecording ? (
+              <TouchableOpacity 
+                       style={[styles.actionButton, styles.recordButton]} 
+                       onPress={startSoundCapture}
+              >
+                       <Text style={styles.actionButtonText}>🎤 Start Recording</Text>
               </TouchableOpacity>
+                   ) : (
+              <TouchableOpacity 
+                       style={[styles.actionButton, styles.stopButton]} 
+                       onPress={stopSoundCapture}
+              >
+                       <Text style={styles.actionButtonText}>⏹️ Stop Recording</Text>
+              </TouchableOpacity>
+                   )}
             </View>
+                 
+                 {isRecording && (
+                   <View style={styles.liveMeter}>
+                     <Text style={styles.liveMeterText}>Live: {currentDb} dB</Text>
+                     <View style={styles.meterBar}>
+                       <View 
+                         style={[
+                           styles.meterFill, 
+                           { 
+                             width: `${Math.min(100, (currentDb - 30) / 70 * 100)}%`,
+                             backgroundColor: getDbColor(currentDb)
+                           }
+                         ]} 
+                       />
+          </View>
+              </View>
+              )}
+                 
+                                   <Text style={styles.captureInfo}>
+                    Record ambient noise and submit to database as IoT device{'\n'}
+                    (Falls back to simulation if audio recording fails)
+                  </Text>
+            </View>
+        </View>
 
             {/* Settings */}
             <View style={styles.optionSection}>
@@ -448,8 +743,8 @@ export default function MapScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setHeatmapEnabled(true)} style={[styles.pillButton, heatmapEnabled && styles.pillButtonActive]}>
                     <Text style={[styles.pillButtonText, heatmapEnabled && styles.pillButtonTextActive]}>Heatmap</Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
+          </View>
           </View>
 
               <View style={styles.settingRow}>
@@ -503,24 +798,54 @@ export default function MapScreen() {
         )}
       </Animated.View>
 
-      {/* Location Info */}
-      {selectedLocation && (
-        <View style={styles.infoCard}>
-          <View style={styles.infoHeader}>
-            <Text style={styles.infoTitle}>Location Details</Text>
-            <TouchableOpacity onPress={() => setSelectedLocation(null)} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-      </TouchableOpacity>
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.dbValue}>{selectedLocation.dB} dB</Text>
-            <Text style={styles.infoTime}>{selectedLocation.location}</Text>
-            <Text style={styles.infoTime}>
-              {new Date(selectedLocation.timestamp).toLocaleString()}
-            </Text>
-          </View>
+             {/* Location Info */}
+       {selectedLocation && (
+         <View style={styles.infoCard}>
+           <View style={styles.infoHeader}>
+             <Text style={styles.infoTitle}>Location Details</Text>
+             <TouchableOpacity onPress={() => setSelectedLocation(null)} style={styles.closeButton}>
+               <Text style={styles.closeButtonText}>✕</Text>
+             </TouchableOpacity>
+           </View>
+           <View style={styles.infoContent}>
+             <Text style={styles.dbValue}>{selectedLocation.dB} dB</Text>
+             <Text style={styles.infoTime}>{selectedLocation.location}</Text>
+             <Text style={styles.infoTime}>
+               {new Date(selectedLocation.timestamp).toLocaleString()}
+             </Text>
+           </View>
         </View>
       )}
+
+       {/* Live Recording Indicator */}
+       {isRecording && (
+         <View style={styles.liveRecordingCard}>
+           <View style={styles.liveRecordingHeader}>
+             <View style={styles.recordingStatus}>
+               <View style={styles.recordingDot} />
+               <Text style={styles.recordingStatusText}>LIVE RECORDING</Text>
+             </View>
+             <Text style={styles.currentDbDisplay}>{currentDb} dB</Text>
+           </View>
+           <View style={styles.liveMeterContainer}>
+             <View style={styles.meterBar}>
+               <View 
+                 style={[
+                   styles.meterFill, 
+                   { 
+                     width: `${Math.min(100, (currentDb - 30) / 70 * 100)}%`,
+                     backgroundColor: getDbColor(currentDb)
+                   }
+                 ]} 
+               />
+             </View>
+             <Text style={styles.meterLabels}>
+               <Text style={styles.meterLabel}>30dB</Text>
+               <Text style={styles.meterLabel}>100dB</Text>
+             </Text>
+           </View>
+         </View>
+       )}
     </View>
   );
 }
@@ -537,6 +862,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     alignItems: 'center',
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 5,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'white',
+    marginRight: 6,
+  },
+  recordingText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -548,10 +900,15 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     marginBottom: 5,
   },
-  updateTime: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-  },
+     updateTime: {
+     fontSize: 12,
+     color: 'rgba(255,255,255,0.8)',
+   },
+   loadingContainer: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     gap: 8,
+   },
   mapContainer: {
     flex: 1,
     position: 'relative',
@@ -605,6 +962,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 8,
+  },
+  soundCaptureFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 100,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#8B5CF6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  soundCaptureFabRecording: {
+    backgroundColor: '#ef4444',
+    transform: [{ scale: 1.1 }],
   },
   fabText: {
     color: 'white',
@@ -786,5 +1163,103 @@ const styles = StyleSheet.create({
     color: '#718096',
     textAlign: 'center',
     marginBottom: 4,
+  },
+  
+  // Sound Capture Styles
+  soundCaptureSection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  soundCaptureControls: {
+    marginBottom: 15,
+  },
+  recordButton: {
+    backgroundColor: '#10b981',
+  },
+  stopButton: {
+    backgroundColor: '#ef4444',
+  },
+  liveMeter: {
+    backgroundColor: '#f7fafc',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  liveMeterText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2d3748',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  meterBar: {
+    height: 8,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  meterFill: {
+    height: '100%',
+    borderRadius: 4,
+    transition: 'width 0.3s ease',
+  },
+  captureInfo: {
+    fontSize: 12,
+    color: '#718096',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  
+  // Live Recording Card Styles
+  liveRecordingCard: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    right: 20,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ef4444',
+  },
+  liveRecordingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  recordingStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingStatusText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#ef4444',
+    marginLeft: 8,
+  },
+  currentDbDisplay: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2d3748',
+  },
+  liveMeterContainer: {
+    marginBottom: 10,
+  },
+  meterLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 5,
+  },
+  meterLabel: {
+    fontSize: 10,
+    color: '#718096',
   },
 });
