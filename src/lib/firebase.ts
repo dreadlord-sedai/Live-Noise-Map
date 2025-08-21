@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseOptions, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getFirestore, type Firestore, initializeFirestore } from 'firebase/firestore';
 import { getDatabase, type Database } from 'firebase/database';
 
 const firebaseConfig: FirebaseOptions = {
@@ -9,6 +9,7 @@ const firebaseConfig: FirebaseOptions = {
 	storageBucket: 'live-noise-map.firebasestorage.app',
 	messagingSenderId: '451956665233',
 	appId: '1:451956665233:web:3e638a0e860f8c84c34830',
+	databaseURL: 'https://live-noise-map-default-rtdb.asia-southeast1.firebasedatabase.app',
 };
 
 let appSingleton: FirebaseApp | null = null;
@@ -25,7 +26,13 @@ function ensureApp(): FirebaseApp {
 export function getDb(): Firestore | null {
 	if (cachedDb) return cachedDb;
 	const app = ensureApp();
-	cachedDb = getFirestore(app);
+	// Force long polling to avoid WebChannel 400 errors in constrained networks/proxies
+	try {
+		cachedDb = initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false } as any);
+	} catch (_e) {
+		// If already initialized elsewhere, fall back to the existing instance
+		cachedDb = getFirestore(app);
+	}
 	return cachedDb;
 }
 
