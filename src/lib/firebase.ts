@@ -1,32 +1,37 @@
-import { initializeApp, type FirebaseOptions } from 'firebase/app';
+import { initializeApp, type FirebaseOptions, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getDatabase, type Database } from 'firebase/database';
 
+const firebaseConfig: FirebaseOptions = {
+	apiKey: 'AIzaSyCOCcQdAzkYxhfiEiQGCdoZA975PfsOu6A',
+	authDomain: 'live-noise-map.firebaseapp.com',
+	projectId: 'live-noise-map',
+	storageBucket: 'live-noise-map.firebasestorage.app',
+	messagingSenderId: '451956665233',
+	appId: '1:451956665233:web:3e638a0e860f8c84c34830',
+};
+
+let appSingleton: FirebaseApp | null = null;
 let cachedDb: Firestore | null = null;
+let cachedRtdb: Database | null = null;
 
-function buildConfig(): FirebaseOptions | null {
-	const cfg = {
-		apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-		authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-		projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-		storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-		messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-		appId: import.meta.env.VITE_FIREBASE_APP_ID,
-	} as const;
-
-	const values = Object.values(cfg);
-	const hasMissing = values.some((v) => !v || typeof v !== 'string' || v.trim() === '');
-	if (hasMissing) return null;
-	return cfg as unknown as FirebaseOptions;
+function ensureApp(): FirebaseApp {
+	if (!appSingleton) {
+		appSingleton = initializeApp(firebaseConfig);
+	}
+	return appSingleton;
 }
 
 export function getDb(): Firestore | null {
 	if (cachedDb) return cachedDb;
-	const cfg = buildConfig();
-	if (!cfg) {
-		console.warn('Firebase env vars missing. Skipping Firestore init.');
-		return null;
-	}
-	const app = initializeApp(cfg);
+	const app = ensureApp();
 	cachedDb = getFirestore(app);
 	return cachedDb;
+}
+
+export function getRealtimeDb(): Database | null {
+	if (cachedRtdb) return cachedRtdb;
+	const app = ensureApp();
+	cachedRtdb = getDatabase(app);
+	return cachedRtdb;
 }

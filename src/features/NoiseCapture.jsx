@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export default function NoiseCapture({ onSample }) {
+export default function NoiseCapture({ onSample, disabled = false }) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState('');
   const audioContextRef = useRef(null);
@@ -17,7 +17,15 @@ export default function NoiseCapture({ onSample }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (disabled && isCapturing) {
+      // Stop if disabled toggled on
+      stop();
+    }
+  }, [disabled]);
+
   const start = async () => {
+    if (disabled) return;
     try {
       setError('');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -79,10 +87,11 @@ export default function NoiseCapture({ onSample }) {
     <div className="flex flex-col gap-2">
       <div className="text-sm text-red-600">{error}</div>
       <div className="flex gap-2">
-        <button className="px-3 py-2 rounded bg-green-600 text-white" onClick={start} disabled={isCapturing}>Start</button>
+        <button className={`px-3 py-2 rounded text-white ${disabled ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-600'}`} onClick={start} disabled={isCapturing || disabled}>Start</button>
         <button className="px-3 py-2 rounded bg-gray-700 text-white" onClick={stop} disabled={!isCapturing}>Stop</button>
       </div>
       <p className="text-xs text-gray-500">Microphone and location permissions are required.</p>
+      {disabled && <p className="text-xs text-amber-600">Enable Live mode to record to Firestore.</p>}
     </div>
   );
 }
