@@ -1,104 +1,67 @@
-import React, { useEffect, useRef, useState } from 'react';
-import MapView, { UrlTile } from 'react-native-maps';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import { api } from '../services/api';
+import React, { useState } from 'react';
+import MapView from 'react-native-maps';
+import { View, StyleSheet, Text, Dimensions } from 'react-native';
 
 export default function MapScreen() {
-  const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const mapRef = useRef(null);
-  const [layoutReady, setLayoutReady] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Optional: prefetch data in the background (not used for rendering yet)
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        await api.getNoise({ timeRange: '24h' });
-      } catch (e) {
-        // ignore
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const initialRegion = { latitude: 7.8731, longitude: 80.7718, latitudeDelta: 3.5, longitudeDelta: 3.5 };
+  const initialRegion = {
+    latitude: 37.78825,
+    longitude: -122.4324,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  };
 
   return (
-    <View
-      style={styles.container}
-      onLayout={(e) => {
-        const { width, height } = e.nativeEvent.layout;
-        if (width > 0 && height > 0) setLayoutReady(true);
-      }}
-    >
-      {layoutReady && (
+    <View style={styles.container}>
+      <Text style={styles.debug}>Map Status: {mapReady ? 'Ready' : 'Loading...'}</Text>
+      {error && <Text style={styles.error}>Error: {error}</Text>}
+      
       <MapView
-        ref={mapRef}
         style={styles.map}
-        mapType="none"
-        onMapReady={() => {
-          setReady(true);
-          // Nudge layout on some devices where the map renders blank until a camera change
-          requestAnimationFrame(() => {
-            if (mapRef.current) {
-              mapRef.current.animateToRegion(initialRegion, 1);
-            }
-          });
-        }}
-        onLayout={() => {
-          if (mapRef.current) {
-            mapRef.current.animateToRegion(initialRegion, 1);
-          }
-        }}
         initialRegion={initialRegion}
-      >
-        {/* Fallback tiles to ensure something renders even if Google base map has issues */}
-        <UrlTile
-          urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maximumZ={19}
-          shouldReplaceMapContent={false}
-          zIndex={0}
-        />
-      </MapView>
-      )}
-      {!ready && (
-        <View style={styles.banner}>
-          <Text>Loading map…</Text>
-        </View>
-      )}
-      {loading && (
-        <View style={styles.loading}> 
-          <ActivityIndicator />
-        </View>
-      )}
+        onMapReady={() => {
+          console.log('Map is ready!');
+          setMapReady(true);
+        }}
+        onError={(error) => {
+          console.log('Map error:', error);
+          setError(error.nativeEvent.message);
+        }}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+        mapType="standard"
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, width: '100%', height: '100%', backgroundColor: '#fff' },
-  map: { ...StyleSheet.absoluteFillObject },
-  loading: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  container: {
+    flex: 1,
+    backgroundColor: '#f0f0f0',
   },
-  banner: {
+  map: {
+    flex: 1,
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+  },
+  debug: {
     position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
+    top: 50,
+    left: 10,
     backgroundColor: 'rgba(255,255,255,0.9)',
-    padding: 8,
-    borderRadius: 8,
-    alignItems: 'center',
+    padding: 10,
+    zIndex: 1000,
+  },
+  error: {
+    position: 'absolute',
+    top: 100,
+    left: 10,
+    backgroundColor: 'rgba(255,0,0,0.9)',
+    color: 'white',
+    padding: 10,
+    zIndex: 1000,
   },
 });

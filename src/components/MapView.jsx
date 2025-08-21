@@ -127,7 +127,7 @@ export default function MapView({ heatData }) {
     const points = (heatData ?? []).map((p) => [p.lat, p.lon, p.intensity]);
     layer.setLatLngs(points);
     layer.redraw();
-r  }, [heatData]);
+  }, [heatData]);
 
   useEffect(() => {
     const map = mapRef.current;
