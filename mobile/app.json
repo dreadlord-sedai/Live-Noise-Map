@@ -5,9 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": ["ios", "android"],
-    "icon": "./assets/noise-map.svg",
+
+    "icon": "./assets/noise-map-logo.jpg",
     "splash": {
-      "image": "./assets/noise-map.svg",
+      "image": "./assets/noise-map-logo.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#007AFF"
     },
@@ -15,7 +16,7 @@
     "ios": { "supportsTablet": true },
     "android": { 
       "adaptiveIcon": { 
-        "foregroundImage": "./assets/noise-map.svg",
+        "foregroundImage": "./assets/noise-map-logo.jpg",
         "backgroundColor": "#007AFF" 
       },
       "permissions": [
