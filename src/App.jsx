@@ -90,9 +90,30 @@ function App() {
 
       <header className="px-5 py-4 backdrop-blur border-b" style={{ position: 'relative', zIndex: 20, background: 'var(--surface-veil)', borderColor: 'var(--border)', color: 'var(--text)' }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-indigo-600 grid place-items-center text-white">🌐</div>
-            <h1 className="text-xl font-semibold">Live Noise Map</h1>
+          <div className="flex items-center gap-3">
+            <img 
+              src="/noise-map.svg" 
+              alt="Live Noise Map Logo" 
+              className="w-12 h-12 object-contain transition-all duration-300"
+              style={{ 
+                filter: theme === 'dark' ? 'brightness(1.2) contrast(1.1)' : 'brightness(1) contrast(1)'
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                // Fallback to emoji if logo fails to load
+                e.target.nextSibling.style.display = 'block';
+              }}
+            />
+            <div 
+              className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 via-green-500 to-yellow-500 flex items-center justify-center text-white text-2xl font-bold hidden"
+              style={{ display: 'none' }}
+            >
+              🌐
+            </div>
+            <div className="flex flex-col">
+              <h1 className="text-xl font-semibold">Live Noise Map</h1>
+              <span className="text-sm opacity-70">Sri Lanka</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 rounded-full p-1 shadow-sm border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
             {['all','24h','7d'].map((r) => (
