@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView from './components/MapView.jsx';
 import NoiseCapture from './features/NoiseCapture.jsx';
-import { addNoiseSample, subscribeToSamples, subscribeToRtdbReports } from './features/HeatmapData.ts';
+import { addNoiseSample, subscribeToRtdbReports } from './features/HeatmapData.ts';
 import { generateMockSamples, nudgeSamples } from './mock/data.ts';
-import { getDb, getRealtimeDb } from './lib/firebase.ts';
+import { getRealtimeDb } from './lib/firebase.ts';
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
@@ -47,18 +47,12 @@ function App() {
   useEffect(() => {
     setSamples([]);
 
-    const db = getDb();
     const rtdb = getRealtimeDb();
-    const useLive = mode === 'live' || (mode === 'auto' && !!db);
+    const useLive = mode === 'live' || mode === 'auto' || mode === 'rtdb';
 
-    if (mode === 'rtdb' && rtdb) {
-      const unsub = subscribeToRtdbReports(setSamples);
-      return () => unsub();
-    }
-
-    if (useLive && db) {
+    if (useLive && rtdb) {
       mockRef.current.enabled = false;
-      const unsub = subscribeToSamples(setSamples, range);
+      const unsub = subscribeToRtdbReports(setSamples);
       return () => unsub();
     }
 
@@ -85,8 +79,8 @@ function App() {
     }));
   }, [samples]);
 
-  const dbAvailable = !!getDb();
-  const liveActive = mode === 'live' || (mode === 'auto' && dbAvailable);
+  const rtdbAvailable = !!getRealtimeDb();
+  const liveActive = mode === 'live' || mode === 'auto' || (mode === 'rtdb' && rtdbAvailable);
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
