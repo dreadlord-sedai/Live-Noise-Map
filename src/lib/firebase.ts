@@ -19,6 +19,10 @@ let cachedRtdb: Database | null = null;
 function ensureApp(): FirebaseApp {
 	if (!appSingleton) {
 		appSingleton = initializeApp(firebaseConfig);
+		try {
+			// Diagnostic: confirm which RTDB instance this app is configured to use
+			console.log('[Firebase] Configured RTDB URL:', (firebaseConfig as any).databaseURL);
+		} catch (_) {}
 	}
 	return appSingleton;
 }

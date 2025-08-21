@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import MapView from 'react-native-maps';
+import React, { useEffect, useRef, useState } from 'react';
+import MapView, { UrlTile } from 'react-native-maps';
 import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { api } from '../services/api';
 
 export default function MapScreen() {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const mapRef = useRef(null);
+  const [layoutReady, setLayoutReady] = useState(false);
 
   // Optional: prefetch data in the background (not used for rendering yet)
   useEffect(() => {
@@ -23,13 +25,46 @@ export default function MapScreen() {
     return () => { mounted = false; };
   }, []);
 
+  const initialRegion = { latitude: 7.8731, longitude: 80.7718, latitudeDelta: 3.5, longitudeDelta: 3.5 };
+
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        if (width > 0 && height > 0) setLayoutReady(true);
+      }}
+    >
+      {layoutReady && (
       <MapView
+        ref={mapRef}
         style={styles.map}
-        onMapReady={() => setReady(true)}
-        initialRegion={{ latitude: 7.8731, longitude: 80.7718, latitudeDelta: 3.5, longitudeDelta: 3.5 }}
-      />
+        mapType="none"
+        onMapReady={() => {
+          setReady(true);
+          // Nudge layout on some devices where the map renders blank until a camera change
+          requestAnimationFrame(() => {
+            if (mapRef.current) {
+              mapRef.current.animateToRegion(initialRegion, 1);
+            }
+          });
+        }}
+        onLayout={() => {
+          if (mapRef.current) {
+            mapRef.current.animateToRegion(initialRegion, 1);
+          }
+        }}
+        initialRegion={initialRegion}
+      >
+        {/* Fallback tiles to ensure something renders even if Google base map has issues */}
+        <UrlTile
+          urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maximumZ={19}
+          shouldReplaceMapContent={false}
+          zIndex={0}
+        />
+      </MapView>
+      )}
       {!ready && (
         <View style={styles.banner}>
           <Text>Loading map…</Text>
@@ -45,8 +80,8 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  map: { flex: 1 },
+  container: { flex: 1, width: '100%', height: '100%', backgroundColor: '#fff' },
+  map: { ...StyleSheet.absoluteFillObject },
   loading: {
     position: 'absolute',
     top: 12,

@@ -128,14 +128,8 @@ export function subscribeToRtdbReports(onData: (samples: NoiseSample[]) => void)
 	}
 
 	// Accept common paths IoT devices might use
-	const candidatePaths = [
-		'noiseReports',
-		'noise_reports',
-		'readings',
-		'noise',
-		'reports',
-		'measurements',
-	];
+	// Listen to both legacy root 'noiseReports' and nested 'devices' structures
+	const candidatePaths = ['noiseReports', 'devices'];
 
 	function normalizeOne(record: any): NoiseSample | null {
 		if (!record || typeof record !== 'object') return null;
@@ -192,6 +186,10 @@ export function subscribeToRtdbReports(onData: (samples: NoiseSample[]) => void)
 		const merged: NoiseSample[] = [];
 		for (const k of Object.keys(pending)) merged.push(...pending[k]);
 		pending = {};
+		// Log the samples that will be rendered on the map
+		try {
+			console.log('[RTDB] Emitting samples to map (count=', merged.length, '):', merged);
+		} catch (_e) {}
 		onData(merged);
 	};
 
@@ -199,6 +197,28 @@ export function subscribeToRtdbReports(onData: (samples: NoiseSample[]) => void)
 		const r = ref(rtdb, path);
 		const off = onValue(r, (snap) => {
 			const val = snap.val();
+			try {
+				if (path === 'devices' && val && typeof val === 'object') {
+					const deviceIds = Object.keys(val);
+					console.log('[RTDB] devices root keys (deviceIds):', deviceIds);
+					const firstDeviceId = deviceIds[0];
+					if (firstDeviceId) {
+						const devNode = val[firstDeviceId];
+						const reportContainer = devNode?.noiseReports || devNode?.reports || devNode?.readings;
+						if (reportContainer && typeof reportContainer === 'object') {
+							const reportIds = Object.keys(reportContainer);
+							console.log('[RTDB] first device reportIds:', reportIds.slice(0, 5));
+							const firstReportId = reportIds[0];
+							if (firstReportId) {
+								const firstReport = reportContainer[firstReportId];
+								console.log('[RTDB] first report sample keys:', Object.keys(firstReport || {}));
+							}
+						} else {
+							console.log('[RTDB] expected noiseReports under device node but did not find it');
+						}
+					}
+				}
+			} catch (_e) {}
 			const samples = extractSamples(val);
 			pending[path] = samples;
 			if (!debounceTimer) {
@@ -209,7 +229,11 @@ export function subscribeToRtdbReports(onData: (samples: NoiseSample[]) => void)
 			}
 			if ((samples?.length ?? 0) === 0) {
 				console.debug('[RTDB] Path has no samples yet:', path);
+			} else {
+				console.debug('[RTDB] Received samples from path', path, 'count=', samples.length);
 			}
+		}, (err: any) => {
+			console.error('[RTDB] Subscription error for path', path, (err && (err.code || err.name || String(err))) );
 		});
 		unsubs.push(() => off());
 	}
