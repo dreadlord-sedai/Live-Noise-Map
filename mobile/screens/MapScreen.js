@@ -1,29 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import MapView, { PROVIDER_GOOGLE, Heatmap } from 'react-native-maps';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import MapView from 'react-native-maps';
+import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { api } from '../services/api';
 
 export default function MapScreen() {
-  const [points, setPoints] = useState([]);
+  const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Optional: prefetch data in the background (not used for rendering yet)
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         setLoading(true);
-        const data = await api.getNoise({ timeRange: '24h' });
-        if (!mounted) return;
-        const heatPoints = data.map((d) => ({
-          latitude: d.lat,
-          longitude: d.lon,
-          weight: Math.max(0.1, Math.min(1, d.dB / 100)),
-        }));
-        setPoints(heatPoints);
+        await api.getNoise({ timeRange: '24h' });
       } catch (e) {
-        console.warn('Failed to load heatmap data', e);
+        // ignore
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
     return () => { mounted = false; };
@@ -32,18 +26,15 @@ export default function MapScreen() {
   return (
     <View style={styles.container}>
       <MapView
-        style={StyleSheet.absoluteFill}
-        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        onMapReady={() => setReady(true)}
         initialRegion={{ latitude: 7.8731, longitude: 80.7718, latitudeDelta: 3.5, longitudeDelta: 3.5 }}
-      >
-        {points.length > 0 && (
-          <Heatmap points={points} radius={40} opacity={0.8} gradient={{
-            colors: ['#00ff7f', '#ffd700', '#ff0000'],
-            startPoints: [0.01, 0.5, 1.0],
-            colorMapSize: 256,
-          }} />
-        )}
-      </MapView>
+      />
+      {!ready && (
+        <View style={styles.banner}>
+          <Text>Loading map…</Text>
+        </View>
+      )}
       {loading && (
         <View style={styles.loading}> 
           <ActivityIndicator />
@@ -55,6 +46,7 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  map: { flex: 1 },
   loading: {
     position: 'absolute',
     top: 12,
@@ -63,5 +55,15 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+  banner: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
   },
 });

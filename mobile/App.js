@@ -1,31 +1,9 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text } from 'react-native';
-
-function MapScreen() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Map Screen (heatmap)</Text>
-    </View>
-  );
-}
-
-function CaptureScreen() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Capture Screen (mic + GPS)</Text>
-    </View>
-  );
-}
-
-function HistoryScreen() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>History / Analytics</Text>
-    </View>
-  );
-}
+import MapScreen from './screens/MapScreen';
+import CaptureScreen from './screens/CaptureScreen';
+import HistoryScreen from './screens/HistoryScreen';
 
 const Stack = createNativeStackNavigator();
 
