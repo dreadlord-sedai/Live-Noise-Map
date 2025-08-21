@@ -10,6 +10,7 @@ export default function MapScreen() {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [useMockData, setUseMockData] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const webViewRef = useRef(null);
 
   // Sri Lanka coordinates
@@ -501,12 +502,15 @@ export default function MapScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Live Noise Map</Text>
-        <Text style={styles.subtitle}>Sri Lanka</Text>
-      </View>
+      {!isFullScreen && (
+        <View style={styles.header}>
+          <Text style={styles.title}>Live Noise Map</Text>
+          <Text style={styles.subtitle}>Sri Lanka</Text>
+        </View>
+      )}
 
       {/* Data Toggle */}
+      {!isFullScreen && (
       <View style={styles.toggleContainer}>
         <Text style={styles.toggleLabel}>Data Source:</Text>
         <View style={styles.toggleRow}>
@@ -525,6 +529,7 @@ export default function MapScreen() {
           </Text>
         )}
       </View>
+      )}
 
       {/* Map Container */}
       <View style={styles.mapContainer}>
@@ -550,6 +555,7 @@ export default function MapScreen() {
       </View>
 
       {/* Controls */}
+      {!isFullScreen && (
       <View style={styles.controls}>
         <TouchableOpacity style={styles.button} onPress={addRandomNoisePoint}>
           <Text style={styles.buttonText}>Add Point</Text>
@@ -563,9 +569,10 @@ export default function MapScreen() {
           <Text style={styles.buttonText}>Help</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* Selected Location Info */}
-      {selectedLocation && (
+      {selectedLocation && !isFullScreen && (
         <View style={styles.infoPanel}>
           <Text style={styles.infoTitle}>{selectedLocation.location}</Text>
           <Text style={styles.infoDB}>{selectedLocation.dB} dB</Text>
@@ -585,6 +592,7 @@ export default function MapScreen() {
       )}
 
       {/* Stats */}
+      {!isFullScreen && (
       <View style={styles.stats}>
         <Text style={styles.statsText}>
           Total Points: {noiseData.length}
@@ -596,6 +604,16 @@ export default function MapScreen() {
           Max Noise: {Math.max(...noiseData.map(p => p.dB))} dB
         </Text>
       </View>
+      )}
+
+      {/* Fullscreen toggle FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setIsFullScreen(prev => !prev)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.fabText}>{isFullScreen ? '↙︎' : '⛶'}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -659,6 +677,27 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  fabText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '700',
   },
   loadingOverlay: {
     position: 'absolute',
