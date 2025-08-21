@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator, Alert, Swi
 import { WebView } from 'react-native-webview';
 import { api } from '../services/api';
 import { generateMockSamples, nudgeSamples } from '../utils/mock';
+import { subscribeToNoiseData } from '../lib/firebase';
 
 export default function MapScreen() {
   const [mapReady, setMapReady] = useState(false);
@@ -33,6 +34,7 @@ export default function MapScreen() {
 
   // Mock simulation state
   const mockTimerRef = useRef(null);
+  const firebaseUnsubscribeRef = useRef(null);
 
   // Simple map HTML
   const mapHtml = `
@@ -247,23 +249,39 @@ export default function MapScreen() {
         clearInterval(mockTimerRef.current);
         mockTimerRef.current = null;
       }
-    }
-    try {
-      const res = await api.getNoise({});
-      const list = Array.isArray(res) ? res : (res && Array.isArray(res.data) ? res.data : []);
-      const mapped = list.map((r) => ({
-        lat: r.lat ?? r.latitude ?? (r.location && r.location.lat),
-        lng: r.lng ?? r.longitude ?? (r.location && r.location.lng),
-        dB: Math.round(r.dB ?? r.decibels ?? r.value ?? 0),
-        timestamp: r.timestamp ?? r.createdAt ?? new Date().toISOString(),
-        location: r.locationName ?? r.city ?? r.location ?? 'Unknown',
-      })).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-      setNoiseData(mapped);
-      setLastUpdate(new Date());
-    } catch (err) {
-      console.warn('Failed to load live noise data', err);
-      if (notifications) {
-        try { Alert.alert('Data Error', 'Failed to load live data.'); } catch (e) {}
+      
+      // Subscribe to Firebase Realtime Database
+      if (!firebaseUnsubscribeRef.current) {
+                 firebaseUnsubscribeRef.current = subscribeToNoiseData((firebaseData) => {
+           const mapped = firebaseData.map((r) => {
+             // Safe timestamp handling
+             let safeTimestamp;
+             try {
+               if (r.timestamp) {
+                 const date = new Date(r.timestamp);
+                 if (isNaN(date.getTime())) {
+                   safeTimestamp = new Date().toISOString();
+                 } else {
+                   safeTimestamp = date.toISOString();
+                 }
+               } else {
+                 safeTimestamp = new Date().toISOString();
+               }
+             } catch (e) {
+               safeTimestamp = new Date().toISOString();
+             }
+
+             return {
+               lat: r.lat ?? r.latitude ?? 0,
+               lng: r.lon ?? r.longitude ?? 0,
+               dB: Math.round(r.dB ?? r.dbValue ?? 0),
+               timestamp: safeTimestamp,
+               location: r.locationName ?? r.city ?? r.location ?? 'Unknown',
+             };
+           }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat !== 0 && p.lng !== 0);
+          setNoiseData(mapped);
+          setLastUpdate(new Date());
+        });
       }
     }
   };
@@ -273,13 +291,13 @@ export default function MapScreen() {
     loadNoiseData();
   }, [useMockData]);
 
-  // Manage auto refresh interval
+  // Manage auto refresh interval and cleanup
   useEffect(() => {
     if (refreshTimerRef.current) {
       clearInterval(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
-    if (autoRefresh) {
+    if (autoRefresh && !useMockData) {
       refreshTimerRef.current = setInterval(() => {
         loadNoiseData();
       }, 30000);
@@ -292,6 +310,10 @@ export default function MapScreen() {
       if (mockTimerRef.current) {
         clearInterval(mockTimerRef.current);
         mockTimerRef.current = null;
+      }
+      if (firebaseUnsubscribeRef.current) {
+        firebaseUnsubscribeRef.current();
+        firebaseUnsubscribeRef.current = null;
       }
     };
   }, [autoRefresh, useMockData]);
