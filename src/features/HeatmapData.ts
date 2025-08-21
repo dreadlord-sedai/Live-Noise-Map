@@ -1,5 +1,6 @@
 import { collection, addDoc, onSnapshot, query, orderBy, Timestamp, where } from 'firebase/firestore';
-import { getDb } from '../lib/firebase';
+import { ref, onValue } from 'firebase/database';
+import { getDb, getRealtimeDb } from '../lib/firebase';
 
 export type NoiseSample = {
 	lat: number;
@@ -60,4 +61,27 @@ export function subscribeToSamples(onData: (samples: NoiseSample[]) => void, ran
 		});
 		onData(data);
 	});
+}
+
+export function subscribeToRtdbReports(onData: (samples: NoiseSample[]) => void): () => void {
+	const rtdb = getRealtimeDb();
+	if (!rtdb) {
+		onData([]);
+		return () => {};
+	}
+	const reportsRef = ref(rtdb, 'noiseReports');
+	const unsub = onValue(reportsRef, (snap) => {
+		const val = snap.val() || {};
+		const samples: NoiseSample[] = Object.keys(val).map((key) => {
+			const r = val[key];
+			return {
+				lat: Number(r.latitude),
+				lon: Number(r.longitude),
+				dB: Number(r.dbValue),
+				timestamp: r.timestamp ? new Date(r.timestamp).toISOString() : new Date().toISOString(),
+			};
+		});
+		onData(samples);
+	});
+	return unsub;
 }

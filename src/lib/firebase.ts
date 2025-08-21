@@ -1,7 +1,7 @@
-import { initializeApp, type FirebaseOptions } from 'firebase/app';
+import { initializeApp, type FirebaseOptions, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getDatabase, type Database } from 'firebase/database';
 
-// TODO: Replace these placeholder values with your actual Firebase project settings
 const firebaseConfig: FirebaseOptions = {
 	apiKey: 'AIzaSyCOCcQdAzkYxhfiEiQGCdoZA975PfsOu6A',
 	authDomain: 'live-noise-map.firebaseapp.com',
@@ -11,18 +11,27 @@ const firebaseConfig: FirebaseOptions = {
 	appId: '1:451956665233:web:3e638a0e860f8c84c34830',
 };
 
+let appSingleton: FirebaseApp | null = null;
 let cachedDb: Firestore | null = null;
+let cachedRtdb: Database | null = null;
+
+function ensureApp(): FirebaseApp {
+	if (!appSingleton) {
+		appSingleton = initializeApp(firebaseConfig);
+	}
+	return appSingleton;
+}
 
 export function getDb(): Firestore | null {
 	if (cachedDb) return cachedDb;
-	const app = initializeApp(firebaseConfig);
+	const app = ensureApp();
 	cachedDb = getFirestore(app);
-	if (
-		firebaseConfig.apiKey?.startsWith('YOUR_') ||
-		!firebaseConfig.projectId ||
-		firebaseConfig.projectId === 'YOUR_PROJECT_ID'
-	) {
-		console.warn('Firebase config placeholders detected. Update hardcoded config in src/lib/firebase.ts');
-	}
 	return cachedDb;
+}
+
+export function getRealtimeDb(): Database | null {
+	if (cachedRtdb) return cachedRtdb;
+	const app = ensureApp();
+	cachedRtdb = getDatabase(app);
+	return cachedRtdb;
 }

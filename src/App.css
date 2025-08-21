@@ -1,8 +1,2 @@
-/* Minimal overrides; Tailwind handles most styling */
-#root {
-  height: 100%;
-}
-
-.logo { display: none; }
-.card { padding: 0; }
-.read-the-docs { display: none; }
+/* Tailwind-driven styles; dark palette applied via index.css */
+#root { height: 100%; }
