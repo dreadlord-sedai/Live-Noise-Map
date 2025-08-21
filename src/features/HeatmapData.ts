@@ -162,20 +162,25 @@ export function subscribeToRtdbReports(onData: (samples: NoiseSample[]) => void)
 	function extractSamples(val: any): NoiseSample[] {
 		const out: NoiseSample[] = [];
 		if (!val) return out;
-		if (Array.isArray(val)) {
-			for (const item of val) {
-				const s = normalizeOne(item);
-				if (s) out.push(s);
+		const walk = (node: any) => {
+			if (!node) return;
+			if (Array.isArray(node)) {
+				for (const item of node) walk(item);
+				return;
 			}
-			return out;
-		}
-		if (typeof val === 'object') {
-			for (const key of Object.keys(val)) {
-				const rec = val[key];
-				const s = normalizeOne(rec);
-				if (s) out.push(s);
+			if (typeof node === 'object') {
+				// If this object itself looks like a reading, capture it
+				const maybe = normalizeOne(node);
+				if (maybe) {
+					out.push(maybe);
+					return; // don't descend further to avoid duplicates
+				}
+				for (const key of Object.keys(node)) {
+					walk(node[key]);
+				}
 			}
-		}
+		};
+		walk(val);
 		return out;
 	}
 
