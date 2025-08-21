@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator, Alert, Switch, ScrollView, Animated } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { api } from '../services/api';
+import { generateMockSamples, nudgeSamples } from '../utils/mock';
 
 export default function MapScreen() {
   const [mapReady, setMapReady] = useState(false);
@@ -11,6 +12,7 @@ export default function MapScreen() {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [heatmapEnabled, setHeatmapEnabled] = useState(false);
   
   // Settings
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -19,13 +21,18 @@ export default function MapScreen() {
   
   const webViewRef = useRef(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const sendToWebView = (type, data) => {
+    if (!webViewRef.current) return;
+    try {
+      const payload = JSON.stringify({ type, data });
+      const escaped = payload.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+      const js = `(function(){try{var e=new MessageEvent('message',{data:\`${escaped}\`});window.dispatchEvent(e);document.dispatchEvent(e);}catch(e){}})();`;
+      webViewRef.current.injectJavaScript(js);
+    } catch (e) {}
+  };
 
-  // Sample data
-  const sampleNoiseData = [
-    { lat: 6.9271, lng: 79.8612, dB: 75, timestamp: '2025-08-21T10:00:00Z', location: 'Colombo' },
-    { lat: 7.2906, lng: 80.6337, dB: 68, timestamp: '2025-08-21T10:05:00Z', location: 'Kandy' },
-    { lat: 6.0535, lng: 80.2210, dB: 72, timestamp: '2025-08-21T10:10:00Z', location: 'Galle' }
-  ];
+  // Mock simulation state
+  const mockTimerRef = useRef(null);
 
   // Simple map HTML
   const mapHtml = `
@@ -35,6 +42,7 @@ export default function MapScreen() {
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
       <style>
         body { margin: 0; padding: 0; }
         #map { width: 100%; height: 100vh; }
@@ -44,35 +52,112 @@ export default function MapScreen() {
       <div id="map"></div>
       <script>
         var map = L.map('map').setView([7.8731, 80.7718], 7);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        
-        var sampleData = ${JSON.stringify(sampleNoiseData)};
-        sampleData.forEach(function(point) {
-          var marker = L.circleMarker([point.lat, point.lng], {
-            radius: 10,
-            fillColor: point.dB > 80 ? '#e74c3c' : point.dB > 60 ? '#f39c12' : '#2ecc71',
-            color: 'white',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.8
-          }).addTo(map);
-          
-          marker.bindPopup(\`
-            <b>\${point.location}</b><br>
-            \${point.dB} dB<br>
-            \${new Date(point.timestamp).toLocaleString()}
-          \`);
-          
-          marker.on('click', function() {
-            if (window.ReactNativeWebView) {
-              window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'marker_click',
-                data: point
-              }));
+        var lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+        var darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap & CartoDB' });
+        lightTiles.addTo(map);
+
+        var markersLayer = L.layerGroup().addTo(map);
+        var heatLayer = null;
+        var heatEnabled = false;
+        var lastPoints = [];
+
+        function updateHeatLayer() {
+          try {
+            var heatData = (lastPoints || []).map(function(p){
+              var val = Number(p.dB || 0);
+              var intensity = Math.max(0, Math.min(1, (val - 50) / 40));
+              return [p.lat, p.lng, intensity];
+            });
+            if (!heatLayer) {
+              heatLayer = L.heatLayer(heatData, {
+                radius: 25,
+                blur: 15,
+                maxZoom: 12,
+                minOpacity: 0.25,
+                gradient: {
+                  0.0: '#2ecc71',
+                  0.5: '#f39c12',
+                  1.0: '#e74c3c'
+                }
+              });
+            } else {
+              heatLayer.setLatLngs(heatData);
             }
-          });
-        });
-        
+          } catch (e) {}
+        }
+
+        function renderData(points) {
+          lastPoints = points || [];
+          if (heatEnabled) {
+            markersLayer.clearLayers();
+            updateHeatLayer();
+            if (heatLayer && !map.hasLayer(heatLayer)) heatLayer.addTo(map);
+          } else {
+            if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+            markersLayer.clearLayers();
+            lastPoints.forEach(function(point) {
+              if (!point || typeof point.lat !== 'number' || typeof point.lng !== 'number') return;
+            var marker = L.circleMarker([point.lat, point.lng], {
+                radius: 10,
+                fillColor: point.dB > 80 ? '#e74c3c' : point.dB > 60 ? '#f39c12' : '#2ecc71',
+              color: 'white',
+                weight: 2,
+              opacity: 1,
+                fillOpacity: 0.8
+              }).addTo(markersLayer);
+              marker.bindPopup('<b>' + (point.location || 'Unknown') + '</b><br>' + (point.dB || 0) + ' dB<br>' + new Date(point.timestamp || Date.now()).toLocaleString());
+            marker.on('click', function() {
+              if (window.ReactNativeWebView) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'marker_click', data: point }));
+                }
+              });
+            });
+          }
+        }
+
+        function setHeatmapEnabled(enabled) {
+          heatEnabled = !!enabled;
+          if (heatEnabled) {
+            updateHeatLayer();
+            if (heatLayer && !map.hasLayer(heatLayer)) heatLayer.addTo(map);
+            markersLayer.clearLayers();
+          } else {
+            if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+            renderData(lastPoints);
+          }
+        }
+
+        function setDarkMode(enabled) {
+          try {
+            if (enabled) {
+              if (map.hasLayer(lightTiles)) map.removeLayer(lightTiles);
+              if (!map.hasLayer(darkTiles)) darkTiles.addTo(map);
+            } else {
+              if (map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
+              if (!map.hasLayer(lightTiles)) lightTiles.addTo(map);
+            }
+          } catch (e) {}
+        }
+
+        function handleIncomingMessage(event) {
+          try {
+            var msg = JSON.parse(event.data);
+            if (!msg || !msg.type) return;
+            if (msg.type === 'set_data') {
+              renderData(msg.data || []);
+            } else if (msg.type === 'set_dark_mode') {
+              setDarkMode(!!msg.data);
+            } else if (msg.type === 'set_heatmap') {
+              setHeatmapEnabled(!!msg.data);
+            }
+          } catch (e) {}
+        }
+
+        window.addEventListener('message', handleIncomingMessage);
+        document.addEventListener('message', handleIncomingMessage);
+
+        renderData([]);
+
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage('Map Ready');
         }
@@ -82,15 +167,48 @@ export default function MapScreen() {
   `;
 
   useEffect(() => {
-    setNoiseData(sampleNoiseData);
+    // Initialize with generated mock data
+    const initial = generateMockSamples(800).map((p) => ({
+      lat: p.lat,
+      lng: p.lon,
+      dB: p.dB,
+      timestamp: p.timestamp,
+      location: undefined,
+    }));
+    setNoiseData(initial);
     setLastUpdate(new Date());
   }, []);
+
+  // Push data to webview when data changes
+  useEffect(() => {
+    if (mapReady) {
+      sendToWebView('set_data', noiseData);
+    }
+  }, [noiseData, mapReady]);
+
+  // Sync dark mode tiles
+  useEffect(() => {
+    if (mapReady) {
+      sendToWebView('set_dark_mode', darkMode);
+    }
+  }, [darkMode, mapReady]);
+
+  // Sync heatmap toggle
+  useEffect(() => {
+    if (mapReady) {
+      sendToWebView('set_heatmap', heatmapEnabled);
+    }
+  }, [heatmapEnabled, mapReady]);
 
   const handleMapMessage = (event) => {
     const message = event.nativeEvent.data;
     
     if (message === 'Map Ready') {
       setMapReady(true);
+      // push initial state
+      sendToWebView('set_dark_mode', darkMode);
+      sendToWebView('set_heatmap', heatmapEnabled);
+      sendToWebView('set_data', noiseData);
     } else {
       try {
         const data = JSON.parse(message);
@@ -102,6 +220,81 @@ export default function MapScreen() {
       }
     }
   };
+
+  // Live data loading and auto refresh
+  const refreshTimerRef = useRef(null);
+
+  const loadNoiseData = async () => {
+    if (useMockData) {
+      // Ensure mock simulation running
+      if (!mockTimerRef.current) {
+        mockTimerRef.current = setInterval(() => {
+          setNoiseData((prev) => {
+            const nudged = nudgeSamples(prev.map(p => ({ lat: p.lat, lon: p.lng, dB: p.dB, timestamp: p.timestamp })), 0.2)
+              .map(p => ({ lat: p.lat, lng: p.lon, dB: p.dB, timestamp: p.timestamp }));
+            return nudged;
+          });
+          setLastUpdate(new Date());
+        }, 4000);
+      }
+      // Also do an immediate nudge to show freshness
+      setNoiseData((prev) => prev.length ? prev : generateMockSamples(800).map(p => ({ lat: p.lat, lng: p.lon, dB: p.dB, timestamp: p.timestamp })));
+      setLastUpdate(new Date());
+      return;
+    } else {
+      // If switching to live, stop mock timer
+      if (mockTimerRef.current) {
+        clearInterval(mockTimerRef.current);
+        mockTimerRef.current = null;
+      }
+    }
+    try {
+      const res = await api.getNoise({});
+      const list = Array.isArray(res) ? res : (res && Array.isArray(res.data) ? res.data : []);
+      const mapped = list.map((r) => ({
+        lat: r.lat ?? r.latitude ?? (r.location && r.location.lat),
+        lng: r.lng ?? r.longitude ?? (r.location && r.location.lng),
+        dB: Math.round(r.dB ?? r.decibels ?? r.value ?? 0),
+        timestamp: r.timestamp ?? r.createdAt ?? new Date().toISOString(),
+        location: r.locationName ?? r.city ?? r.location ?? 'Unknown',
+      })).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+      setNoiseData(mapped);
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.warn('Failed to load live noise data', err);
+      if (notifications) {
+        try { Alert.alert('Data Error', 'Failed to load live data.'); } catch (e) {}
+      }
+    }
+  };
+
+  // Load data whenever source toggles
+  useEffect(() => {
+    loadNoiseData();
+  }, [useMockData]);
+
+  // Manage auto refresh interval
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+    if (autoRefresh) {
+      refreshTimerRef.current = setInterval(() => {
+        loadNoiseData();
+      }, 30000);
+    }
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+      if (mockTimerRef.current) {
+        clearInterval(mockTimerRef.current);
+        mockTimerRef.current = null;
+      }
+    };
+  }, [autoRefresh, useMockData]);
 
   const toggleOptions = () => {
     setShowOptions(!showOptions);
@@ -139,11 +332,11 @@ export default function MapScreen() {
       {/* Clean Header */}
       {!isFullScreen && (
         <View style={styles.header}>
-          <Text style={styles.title}>Live Noise Map</Text>
-          <Text style={styles.subtitle}>Sri Lanka</Text>
-          {lastUpdate && (
-            <Text style={styles.updateTime}>Updated {lastUpdate.toLocaleTimeString()}</Text>
-          )}
+            <Text style={styles.title}>Live Noise Map</Text>
+            <Text style={styles.subtitle}>Sri Lanka</Text>
+            {lastUpdate && (
+              <Text style={styles.updateTime}>Updated {lastUpdate.toLocaleTimeString()}</Text>
+            )}
         </View>
       )}
 
@@ -160,8 +353,8 @@ export default function MapScreen() {
         
         {!mapReady && (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading Map...</Text>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.loadingText}>Loading Map...</Text>
           </View>
         )}
       </View>
@@ -169,13 +362,13 @@ export default function MapScreen() {
       {/* Fullscreen Button */}
       <TouchableOpacity style={styles.fullscreenFab} onPress={toggleFullScreen}>
         <Text style={styles.fabText}>{isFullScreen ? '⤓' : '⤢'}</Text>
-      </TouchableOpacity>
-
+              </TouchableOpacity>
+              
       {/* Options Button */}
       <TouchableOpacity style={styles.fab} onPress={toggleOptions}>
         <Text style={styles.fabText}>⚙️</Text>
-      </TouchableOpacity>
-
+              </TouchableOpacity>
+              
       {/* Options Panel */}
       <Animated.View 
         style={[
@@ -210,7 +403,7 @@ export default function MapScreen() {
                   trackColor={{ false: '#e2e8f0', true: '#10b981' }}
                   thumbColor="#ffffff"
                 />
-              </View>
+        </View>
             </View>
 
             {/* Actions */}
@@ -225,6 +418,18 @@ export default function MapScreen() {
             <View style={styles.optionSection}>
               <Text style={styles.sectionTitle}>Settings</Text>
               
+              <View style={styles.settingRow}>
+                <Text style={styles.settingLabel}>Visualization</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity onPress={() => setHeatmapEnabled(false)} style={[styles.pillButton, !heatmapEnabled && styles.pillButtonActive]}>
+                    <Text style={[styles.pillButtonText, !heatmapEnabled && styles.pillButtonTextActive]}>Data points</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setHeatmapEnabled(true)} style={[styles.pillButton, heatmapEnabled && styles.pillButtonActive]}>
+                    <Text style={[styles.pillButtonText, heatmapEnabled && styles.pillButtonTextActive]}>Heatmap</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
               <View style={styles.settingRow}>
                 <Text style={styles.settingLabel}>Auto-refresh</Text>
                 <Switch
@@ -243,7 +448,7 @@ export default function MapScreen() {
                   trackColor={{ false: '#e2e8f0', true: '#007AFF' }}
                   thumbColor="#ffffff"
                 />
-              </View>
+            </View>
 
               <View style={styles.settingRow}>
                 <Text style={styles.settingLabel}>Dark Mode</Text>
@@ -253,23 +458,23 @@ export default function MapScreen() {
                   trackColor={{ false: '#e2e8f0', true: '#007AFF' }}
                   thumbColor="#ffffff"
                 />
-              </View>
-            </View>
+          </View>
+        </View>
 
             {/* Stats */}
             <View style={styles.optionSection}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
                 <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{noiseData.length}</Text>
+                <Text style={styles.statValue}>{noiseData.length}</Text>
                   <Text style={styles.statLabel}>Points</Text>
-                </View>
+              </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statValue}>
+                <Text style={styles.statValue}>
                     {noiseData.length > 0 ? Math.round(noiseData.reduce((sum, p) => sum + p.dB, 0) / noiseData.length) : 0}
-                  </Text>
-                  <Text style={styles.statLabel}>Avg dB</Text>
-                </View>
+                </Text>
+                <Text style={styles.statLabel}>Avg dB</Text>
+              </View>
               </View>
             </View>
           </ScrollView>
@@ -283,7 +488,7 @@ export default function MapScreen() {
             <Text style={styles.infoTitle}>Location Details</Text>
             <TouchableOpacity onPress={() => setSelectedLocation(null)} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
+      </TouchableOpacity>
           </View>
           <View style={styles.infoContent}>
             <Text style={styles.dbValue}>{selectedLocation.dB} dB</Text>
@@ -485,6 +690,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  pillButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#edf2f7',
+  },
+  pillButtonActive: {
+    backgroundColor: '#007AFF',
+  },
+  pillButtonText: {
+    color: '#4a5568',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pillButtonTextActive: {
+    color: 'white',
+  },
   statCard: {
     flex: 1,
     backgroundColor: '#f7fafc',
@@ -543,4 +765,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 4,
   },
-}); 
+});
