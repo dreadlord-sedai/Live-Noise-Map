@@ -10,7 +10,7 @@ Real-time, interactive heatmap of environmental noise across Sri Lanka. Data can
 - Getting Started
 - Development
 - Modes (Auto / Live / Mock / RTDB)
-- Firebase Setup (Firestore + RTDB)
+- Firebase Setup (Firebase RTDB)
 - Security Notes
 - Performance Notes
 - Accessibility
@@ -22,7 +22,7 @@ As of now the contribution on this project depends on 4 core members, however we
 ## Overview
 Live Noise Map visualizes noise intensity in real time. Each reading contains latitude, longitude, approximate dB level, and timestamp. The app supports:
 - Browser capture (microphone + location)
-- Firebase Firestore realtime sync
+- Firebase realtime Database
 - Firebase Realtime Database (RTDB) sync
 - Rich mock data for demos (constrained to Sri Lanka land polygon)
 
@@ -36,7 +36,7 @@ Live Noise Map visualizes noise intensity in real time. Each reading contains la
 
 ## Architecture
 - Frontend: React + Vite + Tailwind + Leaflet
-- Data sync: Firebase (Firestore and/or Realtime Database)
+- Data sync: Firebase (Realtime Database)
 - Heatmap: leaflet.heat layer fed with `[lat, lon, intensity]`
 - Mock generator: clustered, background field, pulses, surges; constrained to Sri Lanka polygon
 
@@ -166,3 +166,13 @@ RTDB rules (demo):
 
 ## Roadmap and Backlog
 See `ROADMAP.md` for phased plan and `BACKLOG.md` for actionable next steps.
+
+## Scaling
+Scaling of the application includes using better performative tech stacks, better & improved IOT hardware for MORZ NOISE POD system, Trained pre-built LLM Models for better noise analysing, Independant MORZ NOISE POD system, commercialization + Monetization.
+
+- Use of Flutter for mobile application instead of react native (better UI + Performance)
+- Adding hardware upgrades like SCD30 Sensors for Humidity + Heat + CO2, Better microphone that samples audio, ESP32 Module + SIM for independant Wifi + GPS
+- Intergration of AI/ML models: using LLAMA-2 pre-built models and train them using data sets to analyse and identify audio samples resulting in advanced information such as population and estimate population clusters, estimate events based on population + noise decibel levels.
+- Advanced web app + mobile features such as: Filters, Dashboard, and Analytics
+- Commercialization + Monetization: Noise-as-a-service API, Real-estate Intergration, Provide advanced analytics useful for government, military, special research purposes
+- Scaling: Nationwide -> Global intergration
