@@ -163,3 +163,10 @@ RTDB rules (demo):
 
 ## Roadmap and Backlog
 See `ROADMAP.md` for phased plan and `BACKLOG.md` for actionable next steps.
+
+## Goals
+- Implementing a SaaS
+- Build dashboards for B2G systems
+- Implementing Noise Alerts, Location comparisons in the app
+- Storing historical datasets for Universities/NGOs
+- Implementing AI/ML, to analyse noise and classify information
