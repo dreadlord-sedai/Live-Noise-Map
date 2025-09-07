@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView from './components/MapView.jsx';
 import NoiseCapture from './features/NoiseCapture.jsx';
-import { addNoiseSample, subscribeToRtdbReports } from './features/HeatmapData.ts';
+import { subscribeToSamples, addNoiseSample } from './features/HeatmapData';
 import { generateMockSamples, nudgeSamples } from './mock/data.ts';
-import { getRealtimeDb } from './lib/firebase.ts';
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
@@ -33,7 +32,7 @@ const Pill = ({ active, children, onClick, title }) => (
 function App() {
   const [samples, setSamples] = useState([]);
   const [range, setRange] = useState('all');
-  const [mode, setMode] = useState('auto'); // 'auto' | 'live' | 'mock' | 'rtdb'
+  const [mode, setMode] = useState('auto'); // 'auto' | 'live' | 'mock'
   const [theme, setTheme] = useState('light'); // 'light' | 'dark'
   const mockRef = useRef({ enabled: false, timer: 0, data: [] });
 
@@ -47,12 +46,9 @@ function App() {
   useEffect(() => {
     setSamples([]);
 
-    const rtdb = getRealtimeDb();
-    const useLive = mode === 'live' || mode === 'auto' || mode === 'rtdb';
-
-    if (useLive && rtdb) {
+    if (mode === 'live' || mode === 'auto') {
       mockRef.current.enabled = false;
-      const unsub = subscribeToRtdbReports(setSamples);
+      const unsub = subscribeToSamples(setSamples, range);
       return () => unsub();
     }
 
@@ -79,8 +75,7 @@ function App() {
     }));
   }, [samples]);
 
-  const rtdbAvailable = !!getRealtimeDb();
-  const liveActive = mode === 'live' || mode === 'auto' || (mode === 'rtdb' && rtdbAvailable);
+  const liveActive = mode === 'live' || mode === 'auto';
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
@@ -95,11 +90,11 @@ function App() {
             <h1 className="text-xl font-semibold">Live Noise Map</h1>
           </div>
           <div className="flex items-center gap-2 rounded-full p-1 shadow-sm border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-            {['all','24h','7d'].map((r) => (
+            {['all','hour','day'].map((r) => (
               <Pill key={r} active={range===r} onClick={() => setRange(r)}>{r === 'all' ? 'All' : r}</Pill>
             ))}
             <div className="w-px h-6" style={{ background: 'var(--border)' }} />
-            {['auto','live','mock','rtdb'].map((m) => (
+            {['auto','live','mock'].map((m) => (
               <Pill key={m} active={mode===m} onClick={() => setMode(m)} title={m.toUpperCase()}>{m}</Pill>
             ))}
             <div className="w-px h-6" style={{ background: 'var(--border)' }} />
@@ -114,7 +109,7 @@ function App() {
         <div className="rounded-2xl shadow border p-5" style={{ background: 'var(--surface-veil)', borderColor: 'var(--border)', color: 'var(--text)' }}>
           <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>Capture noise</h2>
           <NoiseCapture onSample={addNoiseSample} disabled={!liveActive} />
-          {!liveActive && <p className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>Enable Live mode to record to Firestore.</p>}
+          {!liveActive && <p className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>Enable Live mode to record to Supabase.</p>}
         </div>
         <div className="rounded-2xl shadow border p-5" style={{ background: 'var(--surface-veil)', borderColor: 'var(--border)', color: 'var(--text)' }}>
           <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>Legend</h2>
