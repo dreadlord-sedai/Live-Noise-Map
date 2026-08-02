@@ -78,6 +78,24 @@ Realtime Database (path `noiseReports`) expected schema:
   }
 }
 ```
+## IoT Pod (ESP32)
+In addition to browser-based capture, the project includes a physical 
+sensor pod built on ESP32 for the hackathon demo. The pod captures 
+noise level (via I2S microphone) and GPS location (via TinyGPS++), 
+then transmits readings to the backend for display on the live map.
+
+- Hardware: ESP32 + I2S microphone + GPS module
+- Firmware: `[path to your .ino file]`
+- Data flow: Pod → WiFi → Firebase (Firestore/RTDB) → live heatmap
+
+**Status:** The physical pod built for the hackathon demo has since 
+been disassembled. The firmware is preserved here for reference. It 
+was working and tested during the hackathon but has not been 
+re-verified on hardware since.
+
+**Note on credentials:** the firmware file uses placeholder values for 
+WiFi and Firebase credentials — replace with your own before flashing 
+to a device.
 
 ## Getting Started
 Prerequisites:
