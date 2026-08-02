@@ -1,5 +1,4 @@
 #include <TinyGPS++.h>
-#include <TinyGPSPlus.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -9,16 +8,15 @@
 
 
 // ---------------- WiFi ----------------
-const char* WIFI_SSID = "vivo Y03";
-const char* WIFI_PASSWORD = "11112222m";
-
+const char* WIFI_SSID = ""; // Replace with your WiFi SSID
+const char* WIFI_PASSWORD = ""; // Replace with your WiFi password
 // Timezone offset (Sri Lanka = GMT+5:30)
 const long gmtOffset_sec = 5 * 3600 + 1800;
 const int daylightOffset_sec = 0;
 
 // ---------------- Firebase ----------------
 String FIREBASE_URL = "https://live-noise-map-default-rtdb.asia-southeast1.firebasedatabase.app/noiseReports.json";  // .json required for REST API https://your-project-id.firebaseio.com/noise_samples.json
-String FIREBASE_AUTH = "uqbUuhi9dElR6iSxdRo66cuqfghZKxHKxDbMN1nP";                                                   // Or use a token YOUR_FIREBASE_DATABASE_SECRET
+String FIREBASE_AUTH = "";  // Or use a token YOUR_FIREBASE_DATABASE_SECRET
 
 // ---------------- GPS ----------------
 #define GPS_RX 16  // ESP32 pin connected to GPS TX
