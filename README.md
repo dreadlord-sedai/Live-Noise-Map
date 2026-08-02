@@ -85,7 +85,7 @@ noise level (via I2S microphone) and GPS location (via TinyGPS++),
 then transmits readings to the backend for display on the live map.
 
 - Hardware: ESP32 + I2S microphone + GPS module
-- Firmware: `[path to your .ino file]`
+- Firmware: `iot-npod/Noise_Pollution_Heatmap.ino`
 - Data flow: Pod → WiFi → Firebase (Firestore/RTDB) → live heatmap
 
 **Status:** The physical pod built for the hackathon demo has since 
