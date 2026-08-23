@@ -1,6 +1,27 @@
 # Live Noise Map
 
-Real-time, interactive heatmap of environmental noise across Sri Lanka. Data can come from browsers (Web Audio + Geolocation), IoT pods (ESP32 + mic), Firebase Firestore, or Firebase Realtime Database. The app renders an animated heatmap using Leaflet and `leaflet.heat`.
+Real-time, interactive heatmap of environmental noise across Sri Lanka. Data comes from browsers (Web Audio + Geolocation) and mobile devices, synced live via **Firebase Realtime Database**. The app renders an animated heatmap using Leaflet and `leaflet.heat`.
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/web-1.png" width="32%" alt="Live Noise Map web view 1"/>
+  <img src="screenshots/web-2.png" width="32%" alt="Live Noise Map web view 2"/>
+  <img src="screenshots/web-3.png" width="32%" alt="Live Noise Map web view 3"/>
+</p>
+
+## Documentation
+
+Comprehensive documentation lives in [`docs/`](docs/index.md):
+
+| Doc | Contents |
+|---|---|
+| [Architecture](docs/architecture.md) | Repo layout, data flow, mode logic |
+| [Web app](docs/web-app.md) | Setup, features, key-file walkthrough |
+| [Mobile app](docs/mobile-app.md) | Expo setup, screens, WebView map bridge |
+| [Data model](docs/data-model.md) | Schemas, field aliases, intensity mapping |
+| [Firebase setup](docs/firebase-setup.md) | Config locations, rules, security notes |
+| [API](docs/api.md) | Shared REST client endpoints |
 
 ## Table of Contents
 - Overview
@@ -25,10 +46,10 @@ Live Noise Map visualizes noise intensity in real time. Each reading contains la
 
 ## Key Features
 - Leaflet + leaflet.heat heatmap with green → yellow → red gradient
-- Realtime updates from Firestore or RTDB
+- Realtime updates from Firebase Realtime Database
 - Web capture: approximate dB via Web Audio API + Geolocation API
-- Mode toggle: Auto / Live (Firestore) / Mock / RTDB
-- Time filters: All / 24h / 7d (for Firestore)
+- Mode toggle: Auto / Live / Mock / RTDB (all live modes use RTDB)
+- Time filters: All / 24h / 7d (UI controls)
 - Tailwind CSS UI (dev uses CDN assist; production uses PostCSS build)
 
 ## Architecture
@@ -40,7 +61,7 @@ Live Noise Map visualizes noise intensity in real time. Each reading contains la
 Directory highlights:
 - `src/components/MapView.jsx` – Leaflet map + heat layer lifecycle
 - `src/features/NoiseCapture.jsx` – Web Audio + Geolocation capture (Start/Stop)
-- `src/features/HeatmapData.ts` – Firestore/RTDB add/subscribe utilities
+- `src/features/HeatmapData.ts` – RTDB add/subscribe utilities (Firestore helpers retained but unused)
 - `src/mock/data.ts` – Robust mock data generator
 - `src/lib/firebase.ts` – Firebase init (Firestore + RTDB) using hardcoded config
 
@@ -103,10 +124,12 @@ npm run preview
 
 ## Modes (Auto / Live / Mock / RTDB)
 Use the toggle in the header:
-- Auto: If Firestore initializes, uses Firestore; otherwise falls back to Mock
-- Live: Force Firestore subscription to `noise_samples`
+- Auto: Uses RTDB if configured; otherwise falls back to Mock
+- Live: Subscribes to RTDB (`noiseReports` + `devices`)
+- RTDB: Same subscription as Live (explicit selection)
 - Mock: Animated mock dataset (no writes)
-- RTDB: Subscribe to `noiseReports` in Realtime Database
+
+All live reads and writes go through Firebase Realtime Database. The Firestore code path in `src/features/HeatmapData.ts` (`subscribeToSamples`) is retained but currently unused.
 
 When switching modes or time range, the app clears existing samples immediately to avoid mixing sources.
 
